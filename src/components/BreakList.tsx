@@ -5,7 +5,7 @@ import useLocalStorage from '@/hooks/useLocalStorage';
 import type { Pausa } from '@/lib/types';
 import BreakCard from './BreakCard';
 import { AnimatePresence, motion } from 'framer-motion';
-import { scheduleNotification, cancelNotification } from '@/lib/notifications';
+import { scheduleNotification, cancelNotification, syncAllNotifications } from '@/lib/notifications';
 
 interface BreakListProps {
   onEdit: (id: string) => void;
@@ -18,6 +18,13 @@ const BreakList: React.FC<BreakListProps> = ({ onEdit }) => {
   useEffect(() => {
     setHasMounted(true);
   }, []);
+
+  useEffect(() => {
+    if(hasMounted && Notification.permission === 'granted') {
+      syncAllNotifications(breaks);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [breaks, hasMounted]);
 
   const handleDelete = async (id: string) => {
     await cancelNotification(id);

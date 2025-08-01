@@ -36,6 +36,7 @@ function useLocalStorage<T>(key: string, initialValue: T): [T, (value: T | ((val
       setStoredValue(valueToStore);
       if (typeof window !== 'undefined') {
         window.localStorage.setItem(key, JSON.stringify(valueToStore));
+        // Manually dispatch a storage event to trigger updates in the same tab
         window.dispatchEvent(new StorageEvent('storage', { key }));
       }
     } catch (error) {
@@ -47,7 +48,7 @@ function useLocalStorage<T>(key: string, initialValue: T): [T, (value: T | ((val
     if (typeof window === 'undefined') return;
 
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === key || e.key === null) {
+      if (e.key === key) {
         try {
           const item = window.localStorage.getItem(key);
           setStoredValue(item ? JSON.parse(item) : initialValue);
