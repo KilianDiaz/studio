@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -35,33 +35,37 @@ const BreakForm: React.FC<BreakFormProps> = ({ breakId, onFinished }) => {
   const [breaks, setBreaks] = useLocalStorage<Pausa[]>('breaks', []);
   const { toast } = useToast();
 
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
+  const defaultValues = useMemo(() => {
+    if (breakId) {
+      const existingBreak = breaks.find(b => b.id === breakId);
+      if (existingBreak) {
+        return {
+          nombre: existingBreak.nombre,
+          dias: existingBreak.dias,
+          hora: existingBreak.hora,
+          duracion: String(existingBreak.duracion) as '5' | '10' | '15',
+          recordatorio: existingBreak.recordatorio || '',
+        };
+      }
+    }
+    return {
       nombre: '',
       dias: [],
       hora: '10:00',
       duracion: '5',
       recordatorio: '',
-    },
+    };
+  }, [breakId, breaks]);
+
+  const form = useForm<z.infer<typeof formSchema>>({
+    resolver: zodResolver(formSchema),
+    defaultValues,
   });
 
   useEffect(() => {
-    if (breakId) {
-      const existingBreak = breaks.find(b => b.id === breakId);
-      if (existingBreak) {
-        form.reset({
-          nombre: existingBreak.nombre,
-          dias: existingBreak.dias,
-          hora: existingBreak.hora,
-          duracion: String(existingBreak.duracion) as '5' | '10' | '15',
-          recordatorio: existingBreak.recordatorio,
-        });
-      }
-    } else {
-        form.reset();
-    }
-  }, [breakId, breaks, form]);
+    form.reset(defaultValues);
+  }, [defaultValues, form]);
+
 
   const onSubmit = (values: z.infer<typeof formSchema>) => {
     const newBreak: Pausa = {
@@ -75,7 +79,8 @@ const BreakForm: React.FC<BreakFormProps> = ({ breakId, onFinished }) => {
     };
 
     if (breakId) {
-      setBreaks(breaks.map(b => (b.id === breakId ? { ...newBreak, activa: b.activa } : b)));
+       const existingBreak = breaks.find(b => b.id === breakId);
+      setBreaks(breaks.map(b => (b.id === breakId ? { ...newBreak, activa: existingBreak?.activa ?? true } : b)));
       toast({ title: "Pausa actualizada", description: "Tu pausa activa ha sido guardada." });
     } else {
       setBreaks([...breaks, newBreak]);
