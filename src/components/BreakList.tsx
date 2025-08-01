@@ -1,6 +1,6 @@
 "use client";
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import useLocalStorage from '@/hooks/useLocalStorage';
 import type { Pausa } from '@/lib/types';
 import BreakCard from './BreakCard';
@@ -12,6 +12,11 @@ interface BreakListProps {
 
 const BreakList: React.FC<BreakListProps> = ({ onEdit }) => {
   const [breaks, setBreaks] = useLocalStorage<Pausa[]>('breaks', []);
+  const [hasMounted, setHasMounted] = useState(false);
+
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
 
   const handleDelete = (id: string) => {
     setBreaks(breaks.filter(b => b.id !== id));
@@ -20,6 +25,15 @@ const BreakList: React.FC<BreakListProps> = ({ onEdit }) => {
   const toggleBreak = (id: string, activa: boolean) => {
     setBreaks(breaks.map(b => b.id === id ? { ...b, activa } : b));
   };
+
+  if (!hasMounted) {
+    return (
+      <div className="text-center py-16 px-6 border-2 border-dashed rounded-lg">
+        <h2 className="text-xl font-semibold text-muted-foreground">Cargando pausas...</h2>
+        <p className="text-muted-foreground mt-2">Por favor, espera.</p>
+      </div>
+    );
+  }
 
   if (breaks.length === 0) {
     return (
