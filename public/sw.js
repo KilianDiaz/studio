@@ -1,85 +1,76 @@
-/// <reference lib="webworker" />
-
-// This is a basic service worker that allows the app to be installed and work offline.
-// It also handles push notifications.
-
-const CACHE_NAME = 'activa-ahora-cache-v1';
-const urlsToCache = [
-  '/',
-  '/manifest.json',
-  '/logo192.svg',
-  '/logo512.svg',
-  '/logo-mono.svg',
-  '/favicon.ico',
-];
-
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => {
-        console.log('Opened cache');
-        return cache.addAll(urlsToCache);
-      })
-  );
+self.addEventListener('push', event => {
+    const data = event.data.json();
+    self.registration.showNotification(data.title, data.options);
 });
 
-self.addEventListener('fetch', (event) => {
-  event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        if (response) {
-          return response;
-        }
-        return fetch(event.request);
-      })
-  );
+self.addEventListener('notificationclick', event => {
+    event.notification.close();
+
+    const urlToOpen = event.notification.data?.url || '/';
+    const action = event.action;
+
+    if (action === 'postpone') {
+        const breakId = event.notification.tag;
+        const body = event.notification.body;
+        const icon = event.notification.icon;
+        const badge = event.notification.badge;
+        const vibrate = event.notification.vibrate;
+
+        const postponeMinutes = 10;
+        const notificationTime = Date.now() + postponeMinutes * 60 * 1000;
+
+        const title = '¡Pausa pospuesta!';
+        const options = {
+            tag: `postponed-${breakId}-${Date.now()}`,
+            body: `Tu pausa ha sido pospuesta por ${postponeMinutes} minutos.`,
+            icon: icon,
+            badge: badge,
+            vibrate: vibrate,
+            data: {
+                url: urlToOpen
+            },
+            actions: [
+                { action: 'view', title: 'Ver Pausa' },
+            ],
+            silent: false
+        };
+
+        const delay = notificationTime - Date.now();
+        
+        setTimeout(() => {
+            self.registration.showNotification(title, options);
+        }, delay);
+
+        event.waitUntil(Promise.resolve());
+        return;
+    }
+
+    event.waitUntil(
+        clients.matchAll({
+            type: 'window',
+            includeUncontrolled: true
+        }).then(clientList => {
+            for (let i = 0; i < clientList.length; i++) {
+                const client = clientList[i];
+                // Check if the client's URL is part of the app's scope
+                if (client.url.startsWith(self.location.origin) && 'focus' in client) {
+                    // Navigate to the correct URL and focus
+                    return client.navigate(urlToOpen).then(c => c.focus());
+                }
+            }
+            if (clients.openWindow) {
+                return clients.openWindow(urlToOpen);
+            }
+        })
+    );
 });
 
-self.addEventListener('notificationclick', (event) => {
-  console.log('On notification click: ', event.notification.tag);
-  event.notification.close();
+self.addEventListener('install', () => {
+    self.skipWaiting();
+    console.log('Service Worker instalado');
+});
 
-  const urlToOpen = event.notification.data.url;
-
-  if (event.action === 'postpone') {
-    // This is a simple postpone for 10 minutes from now.
-    const postponeTime = Date.now() + 10 * 60 * 1000;
-    event.waitUntil(
-      self.registration.showNotification('Pausa pospuesta', {
-        body: `Tu pausa fue pospuesta. Te recordaremos en 10 minutos.`,
-        icon: '/logo192.svg',
-        badge: '/logo-mono.svg',
-        vibrate: [200, 100, 200],
-        silent: false,
-        timestamp: postponeTime,
-        showTrigger: new self.TimestampTrigger(postponeTime),
-        data: {
-          url: urlToOpen,
-        },
-        actions: [
-          { action: 'view', title: 'Ver Pausa' },
-        ]
-      })
-    );
-  } else {
-    // This handles both 'view' action and the general click on the notification
-    event.waitUntil(
-      clients.matchAll({
-        type: 'window',
-        includeUncontrolled: true,
-      }).then((clientList) => {
-        // Check if there's already a window open with the app
-        for (const client of clientList) {
-          // If a window is found, focus it.
-          if (client.url.includes(self.location.origin) && 'focus' in client) {
-            return client.focus();
-          }
-        }
-        // If no window is found, open a new one.
-        if (clients.openWindow) {
-          return clients.openWindow(urlToOpen);
-        }
-      })
-    );
-  }
+self.addEventListener('activate', event => {
+    event.waitUntil(clients.claim());
+    console.log('Service Worker activado');
 });

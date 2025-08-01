@@ -65,22 +65,13 @@ function getNextNotificationTime(breakItem: Pausa): number | null {
 }
 
 async function showNotification(registration: ServiceWorkerRegistration, title: string, options: NotificationOptions) {
-    if ('showTrigger' in Notification.prototype) {
-        try {
-          await registration.showNotification(title, options);
-          console.log("Scheduled notification with Trigger:", options.body);
-        } catch(e) {
-            console.error("Error scheduling with Trigger: ", e);
-        }
-    } else {
-        const delay = (options.timestamp || 0) - Date.now();
-        if (delay < 0) return;
+    const delay = (options.timestamp || 0) - Date.now();
+    if (delay < 0) return;
 
-        setTimeout(() => {
-            registration.showNotification(title, options);
-            console.log("Scheduled notification with Fallback (setTimeout):", options.body);
-        }, delay);
-    }
+    setTimeout(() => {
+        registration.showNotification(title, options);
+        console.log("Scheduled notification with Fallback (setTimeout):", options.body);
+    }, delay);
 }
 
 export async function schedulePostponedNotification(breakItem: Pausa, postponeMinutes: number) {
@@ -105,7 +96,6 @@ export async function schedulePostponedNotification(breakItem: Pausa, postponeMi
       badge: '/logo-mono.svg',
       vibrate: [200, 100, 200],
       timestamp: notificationTime,
-      showTrigger: new (window as any).TimestampTrigger(notificationTime),
       data: {
         url: `/break/${breakItem.id}`,
       },
@@ -143,7 +133,6 @@ export async function scheduleNotification(breakItem: Pausa) {
         badge: '/logo-mono.svg',
         vibrate: [200, 100, 200],
         timestamp: notificationTime,
-        showTrigger: new (window as any).TimestampTrigger(notificationTime),
         data: {
           url: `/break/${breakItem.id}`,
         },
