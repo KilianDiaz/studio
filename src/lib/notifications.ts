@@ -20,7 +20,6 @@ function getNextNotificationTime(breakItem: Pausa): number | null {
 
   let notificationTime: Date | null = null;
 
-  // Check from today for the next 7 days
   for (let i = 0; i < 7; i++) {
     const date = new Date();
     date.setDate(now.getDate() + i);
@@ -37,12 +36,10 @@ function getNextNotificationTime(breakItem: Pausa): number | null {
     }
   }
 
-  // If no time was found in the next 7 days, it must be next week
   if (!notificationTime) {
       const currentDay = now.getDay();
       let nextDay = -1;
       
-      // Find the first scheduled day after today
       for (const day of sortedDays) {
           if (day > currentDay) {
               nextDay = day;
@@ -50,7 +47,6 @@ function getNextNotificationTime(breakItem: Pausa): number | null {
           }
       }
       
-      // If no day is found later this week, take the first scheduled day of next week
       if (nextDay === -1) {
           nextDay = sortedDays[0];
       }
@@ -64,123 +60,93 @@ function getNextNotificationTime(breakItem: Pausa): number | null {
       notificationTime = finalDate;
   }
 
-
   return notificationTime.getTime();
 }
 
-async function sendMessageToServiceWorker(message: any) {
-  if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !navigator.serviceWorker.controller) {
-    console.log("Service Worker not active, cannot send message.");
-    return;
+function showNotification(title: string, options: NotificationOptions) {
+  if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+    navigator.serviceWorker.ready.then(registration => {
+      registration.showNotification(title, options);
+    });
   }
-  navigator.serviceWorker.controller.postMessage(message);
 }
 
 export async function schedulePostponedNotification(breakItem: Pausa, postponeMinutes: number) {
-    if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('Notification' in window) || Notification.permission !== 'granted') {
-        console.log('Cannot schedule postponed notification. Conditions not met.');
-        return;
-    }
-    const registration = await navigator.serviceWorker.ready;
-    if (!registration) return;
-
     const notificationTime = Date.now() + postponeMinutes * 60 * 1000;
     const delay = notificationTime - Date.now();
-
-    console.log(`Scheduling a one-time postponed notification for '${breakItem.nombre}' at ${new Date(notificationTime).toLocaleString()}.`);
     
-    sendMessageToServiceWorker({
-        type: 'SCHEDULE_NOTIFICATION',
-        delay: Math.max(0, delay),
-        title: '¡Pausa pospuesta!',
-        options: {
+    setTimeout(() => {
+        showNotification('¡Pausa pospuesta!', {
             tag: `postponed-${breakItem.id}-${Date.now()}`,
-            body: breakItem.recordatorio || `Es momento de '${breakItem.nombre}'.`,
+            body: `Tu pausa '${breakItem.nombre}' comenzará pronto.`,
             icon: '/logo192.svg',
             badge: '/logo-mono.svg',
+            vibrate: [200, 100, 200],
+            silent: false,
+            requireInteraction: true,
             data: { url: `/break/${breakItem.id}` },
-            actions: [
-              { action: 'view', title: 'Ver Pausa' },
-            ]
-        }
-    });
+            actions: [{ action: 'view', title: 'Ver Pausa' }]
+        });
+    }, Math.max(0, delay));
+    
+    // Reschedule the original break
+    await scheduleNotification(breakItem);
 }
 
 
 export async function scheduleNotification(breakItem: Pausa) {
-  if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('Notification' in window) || Notification.permission !== 'granted') {
-    console.log('Cannot schedule notification. Conditions not met.');
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator) || Notification.permission !== 'granted') {
     return;
   }
   
-  const registration = await navigator.serviceWorker.ready;
-  if (!registration) return;
-
-  // Cancel any existing notification for this break to avoid duplicates
   await cancelNotification(breakItem.id);
 
   const notificationTime = getNextNotificationTime(breakItem);
   
   if (notificationTime) {
     const delay = notificationTime - Date.now();
+    if (delay < 0) return;
 
-    if (delay < 0) {
-      console.log("Not scheduling notification in the past.");
-      return;
-    }
-
-    console.log(`Scheduling notification for '${breakItem.nombre}' at ${new Date(notificationTime).toLocaleString()}.`);
-    
-    sendMessageToServiceWorker({
-        type: 'SCHEDULE_NOTIFICATION',
-        delay: delay,
-        title: '¡Hora de tu pausa activa!',
-        options: {
+    setTimeout(() => {
+        showNotification('¡Hora de tu pausa activa!', {
             tag: breakItem.id,
             body: breakItem.recordatorio || `Es momento de '${breakItem.nombre}'.`,
             icon: '/logo192.svg',
             badge: '/logo-mono.svg',
+            vibrate: [200, 100, 200],
+            silent: false,
+            requireInteraction: true,
             timestamp: notificationTime,
             data: { url: `/break/${breakItem.id}` },
             actions: [
                 { action: 'view', title: 'Ver Pausa' },
                 { action: 'postpone', title: 'Posponer' }
             ]
-        }
-    });
+        });
+    }, delay);
   }
 }
 
 export async function cancelNotification(breakId: string) {
-  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
-  const registration = await navigator.serviceWorker.ready;
-  if (!registration) return;
-
-  const notifications = await registration.getNotifications({ tag: breakId });
-  notifications.forEach(notification => notification.close());
-  console.log(`Cancelled notification for break ${breakId}`);
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator) || Notification.permission !== 'granted') return;
+    const registration = await navigator.serviceWorker.ready;
+    const notifications = await registration.getNotifications({ tag: breakId });
+    notifications.forEach(notification => notification.close());
 }
 
 export async function syncAllNotifications(breaks: Pausa[]) {
-    if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('Notification' in window) || Notification.permission !== 'granted') return;
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator) || Notification.permission !== 'granted') return;
     
     const registration = await navigator.serviceWorker.ready;
-    if (!registration) return;
-
     const currentNotifications = await registration.getNotifications();
     
-    // This is a simple way to cancel. A more robust way would be to send messages to SW to clear its timeouts.
-    // For now, this just prevents duplicates from this client.
-    console.log("Cancelling all visible notifications before sync.");
     for(const notification of currentNotifications) {
         notification.close();
     }
 
-    // Schedule new notifications for all active breaks
     for (const breakItem of breaks) {
         if(breakItem.activa) {
             await scheduleNotification(breakItem);
         }
     }
-    console.log("All notifications have been re-synced.");
 }
