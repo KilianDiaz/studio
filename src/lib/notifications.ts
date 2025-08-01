@@ -70,13 +70,18 @@ function getNextNotificationTime(breakItem: Pausa): number | null {
 
 async function showNotificationWithFallback(registration: ServiceWorkerRegistration, title: string, options: NotificationOptions) {
     const delay = (options.timestamp || 0) - Date.now();
-    if (delay < 0) return;
+    
+    // Do not schedule if the time is in the past, but allow a small grace period (e.g., 1 second)
+    if (delay < -1000) {
+      console.log("Not scheduling notification in the past:", options.body);
+      return;
+    }
 
     // This requires the service worker to be active to show the notification.
     setTimeout(() => {
         registration.showNotification(title, options);
         console.log("Scheduled notification with Fallback (setTimeout):", options.body);
-    }, delay);
+    }, Math.max(0, delay));
 }
 
 export async function schedulePostponedNotification(breakItem: Pausa, postponeMinutes: number) {
