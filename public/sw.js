@@ -1,10 +1,18 @@
 self.addEventListener('push', event => {
   const data = event.data.json();
-  self.registration.showNotification(data.title, {
+  const options = {
     body: data.body,
     icon: '/logo192.png',
-    badge: '/logo-mono.png',
-  });
+    badge: '/logo-mono.svg',
+    vibrate: [200, 100, 200],
+    data: {
+      url: data.url,
+    },
+    actions: data.actions
+  };
+  event.waitUntil(
+    self.registration.showNotification(data.title, options)
+  );
 });
 
 self.addEventListener('notificationclick', event => {
@@ -12,33 +20,38 @@ self.addEventListener('notificationclick', event => {
 
   const urlToOpen = new URL(event.notification.data.url, self.location.origin).href;
 
-  event.waitUntil(
-    clients.matchAll({
-      type: 'window',
-      includeUncontrolled: true,
-    }).then(clientList => {
-      if (clientList.length > 0) {
-        let client = clientList[0];
-        for(let i=0; i < clientList.length; i++) {
-          if (clientList[i].focused) {
-            client = clientList[i];
-            break;
-          }
-        }
-        if (client) {
-          client.navigate(urlToOpen);
-          return client.focus();
-        }
+  const promiseChain = clients.matchAll({
+    type: 'window',
+    includeUncontrolled: true
+  }).then(windowClients => {
+    let matchingClient = null;
+
+    for (let i = 0; i < windowClients.length; i++) {
+      const-client = windowClients[i];
+      if (client.url === urlToOpen) {
+        matchingClient = client;
+        break;
       }
+    }
+
+    if (matchingClient) {
+      return matchingClient.focus();
+    } else {
       return clients.openWindow(urlToOpen);
-    })
-  );
+    }
+  });
+
+  event.waitUntil(promiseChain);
+  console.log("Notification clicked.");
 });
+
 
 self.addEventListener('install', event => {
   console.log('Service worker installed');
+  self.skipWaiting();
 });
 
 self.addEventListener('activate', event => {
   console.log('Service worker activated');
+  event.waitUntil(self.clients.claim());
 });

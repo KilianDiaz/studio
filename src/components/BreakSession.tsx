@@ -110,8 +110,6 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
           return exercises[nextIndex].duracion;
         }
         
-        // This was the last exercise
-        setHasFinished(true);
         return 0;
       });
     }, 1000);
