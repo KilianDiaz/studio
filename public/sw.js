@@ -1,56 +1,96 @@
-self.addEventListener('push', event => {
-  console.log('[Service Worker] Push Received.');
-  console.log(`[Service Worker] Push had this data: "${event.data.text()}"`);
+// self.skipWaiting();
 
-  const title = '¡Hora de tu pausa activa!';
-  const options = {
-    body: event.data.text(),
-    icon: 'logo192.svg',
-    badge: 'logo-mono.svg',
-    vibrate: [200, 100, 200],
-    silent: false,
-    data: {
-      url: self.location.origin,
-    }
-  };
+const CACHE_NAME = 'activa-ahora-cache-v1';
+const urlsToCache = [
+  '/',
+  '/manifest.json',
+  '/logo192.svg',
+  '/logo512.svg',
+  '/logo-mono.svg'
+];
 
-  event.waitUntil(self.registration.showNotification(title, options));
-});
-
-self.addEventListener('notificationclick', event => {
-  console.log('[Service Worker] Notification click Received.');
-
-  event.notification.close();
-
-  const urlToOpen = new URL(event.notification.data.url || '/', self.location.origin).href;
-
+self.addEventListener('install', event => {
   event.waitUntil(
-    clients.matchAll({
-      type: 'window',
-      includeUncontrolled: true,
-    }).then(clientList => {
-      if (clientList.length > 0) {
-        let client = clientList.find(c => c.url === urlToOpen && 'focus' in c);
-        if (client) {
-            return client.focus();
-        }
-        if (clientList[0].navigate && clientList[0].focus) {
-            clientList[0].navigate(urlToOpen);
-            return clientList[0].focus();
-        }
-      }
-      if (clients.openWindow) {
-        return clients.openWindow(urlToOpen);
-      }
-    })
+    caches.open(CACHE_NAME)
+      .then(cache => {
+        console.log('Opened cache');
+        return cache.addAll(urlsToCache);
+      })
   );
 });
 
-self.addEventListener('install', (event) => {
-  console.log('Service worker installing...');
-  self.skipWaiting();
+self.addEventListener('fetch', event => {
+  event.respondWith(
+    caches.match(event.request)
+      .then(response => {
+        if (response) {
+          return response;
+        }
+        return fetch(event.request);
+      })
+  );
 });
 
-self.addEventListener('activate', (event) => {
-  console.log('Service worker activating...');
+async function findBestClient() {
+    const allClients = await self.clients.matchAll({
+      type: 'window',
+      includeUncontrolled: true
+    });
+
+    // Find the most recently focused client if available
+    const focusedClient = allClients.find(client => client.focused);
+    if (focusedClient) return focusedClient;
+    
+    // Otherwise, find any visible client
+    const visibleClient = allClients.find(client => client.visibilityState === 'visible');
+    if (visibleClient) return visibleClient;
+
+    // Fallback to the first client in the list
+    if (allClients.length > 0) return allClients[0];
+
+    return null;
+}
+
+
+self.addEventListener('notificationclick', event => {
+    event.notification.close();
+    
+    const urlToOpen = event.notification.data?.url || '/';
+
+    const promiseChain = clients.matchAll({
+        type: 'window',
+        includeUncontrolled: true
+    }).then(windowClients => {
+        let matchingClient = null;
+        for (let i = 0; i < windowClients.length; i++) {
+            const client = windowClients[i];
+            if (client.url === urlToOpen) {
+                matchingClient = client;
+                break;
+            }
+        }
+
+        if (matchingClient) {
+            return matchingClient.focus();
+        } else {
+            return clients.openWindow(urlToOpen);
+        }
+    });
+
+    event.waitUntil(promiseChain);
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SCHEDULE_NOTIFICATION') {
+    const { title, options, delay } = event.data;
+    
+    setTimeout(() => {
+        self.registration.showNotification(title, {
+            ...options,
+            silent: false, // Force sound
+            vibrate: [200, 100, 200], // Add vibration
+            requireInteraction: true, // Keep notification until user interaction
+        });
+    }, delay);
+  }
 });

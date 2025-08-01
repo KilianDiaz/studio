@@ -68,20 +68,12 @@ function getNextNotificationTime(breakItem: Pausa): number | null {
   return notificationTime.getTime();
 }
 
-async function showNotificationWithFallback(registration: ServiceWorkerRegistration, title: string, options: NotificationOptions) {
-    const delay = (options.timestamp || 0) - Date.now();
-    
-    // Do not schedule if the time is in the past, but allow a small grace period (e.g., 1 second)
-    if (delay < -1000) {
-      console.log("Not scheduling notification in the past:", options.body);
-      return;
-    }
-
-    // This requires the service worker to be active to show the notification.
-    setTimeout(() => {
-        registration.showNotification(title, options);
-        console.log("Scheduled notification with Fallback (setTimeout):", options.body);
-    }, Math.max(0, delay));
+async function sendMessageToServiceWorker(message: any) {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !navigator.serviceWorker.controller) {
+    console.log("Service Worker not active, cannot send message.");
+    return;
+  }
+  navigator.serviceWorker.controller.postMessage(message);
 }
 
 export async function schedulePostponedNotification(breakItem: Pausa, postponeMinutes: number) {
@@ -90,29 +82,27 @@ export async function schedulePostponedNotification(breakItem: Pausa, postponeMi
         return;
     }
     const registration = await navigator.serviceWorker.ready;
-    if (!registration || !registration.showNotification) {
-        console.log('Service Worker not ready or does not support showNotification.');
-        return;
-    }
+    if (!registration) return;
 
     const notificationTime = Date.now() + postponeMinutes * 60 * 1000;
+    const delay = notificationTime - Date.now();
 
     console.log(`Scheduling a one-time postponed notification for '${breakItem.nombre}' at ${new Date(notificationTime).toLocaleString()}.`);
     
-    await showNotificationWithFallback(registration, '¡Hora de tu pausa activa!', {
-      tag: `postponed-${breakItem.id}-${Date.now()}`,
-      body: breakItem.recordatorio || `Es momento de '${breakItem.nombre}'.`,
-      icon: '/logo192.svg',
-      badge: '/logo-mono.svg',
-      vibrate: [200, 100, 200],
-      timestamp: notificationTime,
-      data: {
-        url: `/break/${breakItem.id}`,
-      },
-      actions: [
-          { action: 'view', title: 'Ver Pausa' },
-      ],
-      silent: false
+    sendMessageToServiceWorker({
+        type: 'SCHEDULE_NOTIFICATION',
+        delay: Math.max(0, delay),
+        title: '¡Pausa pospuesta!',
+        options: {
+            tag: `postponed-${breakItem.id}-${Date.now()}`,
+            body: breakItem.recordatorio || `Es momento de '${breakItem.nombre}'.`,
+            icon: '/logo192.svg',
+            badge: '/logo-mono.svg',
+            data: { url: `/break/${breakItem.id}` },
+            actions: [
+              { action: 'view', title: 'Ver Pausa' },
+            ]
+        }
     });
 }
 
@@ -124,10 +114,7 @@ export async function scheduleNotification(breakItem: Pausa) {
   }
   
   const registration = await navigator.serviceWorker.ready;
-  if (!registration || !registration.showNotification) {
-    console.log('Service Worker not ready or does not support showNotification.');
-    return;
-  }
+  if (!registration) return;
 
   // Cancel any existing notification for this break to avoid duplicates
   await cancelNotification(breakItem.id);
@@ -135,25 +122,31 @@ export async function scheduleNotification(breakItem: Pausa) {
   const notificationTime = getNextNotificationTime(breakItem);
   
   if (notificationTime) {
+    const delay = notificationTime - Date.now();
+
+    if (delay < 0) {
+      console.log("Not scheduling notification in the past.");
+      return;
+    }
+
     console.log(`Scheduling notification for '${breakItem.nombre}' at ${new Date(notificationTime).toLocaleString()}.`);
     
-    // Fallback for all browsers. This will show the notification immediately after the delay.
-    // It requires the service worker to be active.
-    await showNotificationWithFallback(registration, '¡Hora de tu pausa activa!', {
-        tag: breakItem.id,
-        body: breakItem.recordatorio || `Es momento de '${breakItem.nombre}'.`,
-        icon: '/logo192.svg',
-        badge: '/logo-mono.svg',
-        vibrate: [200, 100, 200],
-        timestamp: notificationTime,
-        data: {
-          url: `/break/${breakItem.id}`,
-        },
-        actions: [
-          { action: 'view', title: 'Ver Pausa' },
-          { action: 'postpone', title: 'Posponer' }
-        ],
-        silent: false
+    sendMessageToServiceWorker({
+        type: 'SCHEDULE_NOTIFICATION',
+        delay: delay,
+        title: '¡Hora de tu pausa activa!',
+        options: {
+            tag: breakItem.id,
+            body: breakItem.recordatorio || `Es momento de '${breakItem.nombre}'.`,
+            icon: '/logo192.svg',
+            badge: '/logo-mono.svg',
+            timestamp: notificationTime,
+            data: { url: `/break/${breakItem.id}` },
+            actions: [
+                { action: 'view', title: 'Ver Pausa' },
+                { action: 'postpone', title: 'Posponer' }
+            ]
+        }
     });
   }
 }
@@ -176,7 +169,9 @@ export async function syncAllNotifications(breaks: Pausa[]) {
 
     const currentNotifications = await registration.getNotifications();
     
-    // Cancel all existing notifications
+    // This is a simple way to cancel. A more robust way would be to send messages to SW to clear its timeouts.
+    // For now, this just prevents duplicates from this client.
+    console.log("Cancelling all visible notifications before sync.");
     for(const notification of currentNotifications) {
         notification.close();
     }
