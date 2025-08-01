@@ -109,35 +109,26 @@ const BreakForm: React.FC<BreakFormProps> = ({ breakId, onFinished }) => {
         <FormField
           control={form.control}
           name="dias"
-          render={() => (
+          render={({ field }) => (
             <FormItem>
               <FormLabel>Días de la semana</FormLabel>
               <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                 {daysOfWeek.map((day) => (
-                  <FormField
-                    key={day}
-                    control={form.control}
-                    name="dias"
-                    render={({ field }) => (
-                      <FormItem className="flex items-center space-x-2 space-y-0">
-                        <FormControl>
-                          <Checkbox
-                            checked={field.value?.includes(day)}
-                            onCheckedChange={(checked) => {
-                              return checked
-                                ? field.onChange([...(field.value || []), day])
-                                : field.onChange(
-                                    (field.value || []).filter(
-                                      (value) => value !== day
-                                    )
-                                  );
-                            }}
-                          />
-                        </FormControl>
-                        <FormLabel className="font-normal text-sm">{day}</FormLabel>
-                      </FormItem>
-                    )}
-                  />
+                  <FormItem key={day} className="flex items-center space-x-2 space-y-0">
+                    <FormControl>
+                      <Checkbox
+                        checked={field.value?.includes(day)}
+                        onCheckedChange={(checked) => {
+                          const currentDays = field.value || [];
+                          const newDays = checked
+                            ? [...currentDays, day]
+                            : currentDays.filter((value) => value !== day);
+                          field.onChange(newDays);
+                        }}
+                      />
+                    </FormControl>
+                    <FormLabel className="font-normal text-sm">{day}</FormLabel>
+                  </FormItem>
                 ))}
               </div>
               <FormMessage />
