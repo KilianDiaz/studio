@@ -20,7 +20,8 @@ function getNextNotificationTime(breakItem: Pausa): number | null {
 
   let notificationTime: Date | null = null;
 
-  for (let i = 0; i < 8; i++) { // Check up to 8 days to cover all week cases
+  // Check from today for the next 7 days
+  for (let i = 0; i < 7; i++) {
     const date = new Date();
     date.setDate(now.getDate() + i);
     const dayOfWeek = date.getDay();
@@ -36,10 +37,12 @@ function getNextNotificationTime(breakItem: Pausa): number | null {
     }
   }
 
+  // If no time was found in the next 7 days, it must be next week
   if (!notificationTime) {
       const currentDay = now.getDay();
       let nextDay = -1;
       
+      // Find the first scheduled day after today
       for (const day of sortedDays) {
           if (day > currentDay) {
               nextDay = day;
@@ -47,6 +50,7 @@ function getNextNotificationTime(breakItem: Pausa): number | null {
           }
       }
       
+      // If no day is found later this week, take the first scheduled day of next week
       if (nextDay === -1) {
           nextDay = sortedDays[0];
       }
@@ -64,10 +68,11 @@ function getNextNotificationTime(breakItem: Pausa): number | null {
   return notificationTime.getTime();
 }
 
-async function showNotification(registration: ServiceWorkerRegistration, title: string, options: NotificationOptions) {
+async function showNotificationWithFallback(registration: ServiceWorkerRegistration, title: string, options: NotificationOptions) {
     const delay = (options.timestamp || 0) - Date.now();
     if (delay < 0) return;
 
+    // This requires the service worker to be active to show the notification.
     setTimeout(() => {
         registration.showNotification(title, options);
         console.log("Scheduled notification with Fallback (setTimeout):", options.body);
@@ -89,7 +94,7 @@ export async function schedulePostponedNotification(breakItem: Pausa, postponeMi
 
     console.log(`Scheduling a one-time postponed notification for '${breakItem.nombre}' at ${new Date(notificationTime).toLocaleString()}.`);
     
-    await showNotification(registration, '¡Hora de tu pausa activa!', {
+    await showNotificationWithFallback(registration, '¡Hora de tu pausa activa!', {
       tag: `postponed-${breakItem.id}-${Date.now()}`,
       body: breakItem.recordatorio || `Es momento de '${breakItem.nombre}'.`,
       icon: '/logo192.svg',
@@ -119,6 +124,7 @@ export async function scheduleNotification(breakItem: Pausa) {
     return;
   }
 
+  // Cancel any existing notification for this break to avoid duplicates
   await cancelNotification(breakItem.id);
 
   const notificationTime = getNextNotificationTime(breakItem);
@@ -126,7 +132,9 @@ export async function scheduleNotification(breakItem: Pausa) {
   if (notificationTime) {
     console.log(`Scheduling notification for '${breakItem.nombre}' at ${new Date(notificationTime).toLocaleString()}.`);
     
-    await showNotification(registration, '¡Hora de tu pausa activa!', {
+    // Fallback for all browsers. This will show the notification immediately after the delay.
+    // It requires the service worker to be active.
+    await showNotificationWithFallback(registration, '¡Hora de tu pausa activa!', {
         tag: breakItem.id,
         body: breakItem.recordatorio || `Es momento de '${breakItem.nombre}'.`,
         icon: '/logo192.svg',
@@ -137,8 +145,8 @@ export async function scheduleNotification(breakItem: Pausa) {
           url: `/break/${breakItem.id}`,
         },
         actions: [
-            { action: 'view', title: 'Ver Pausa' },
-            { action: 'postpone', title: 'Posponer' }
+          { action: 'view', title: 'Ver Pausa' },
+          { action: 'postpone', title: 'Posponer' }
         ],
         silent: false
     });
@@ -163,10 +171,12 @@ export async function syncAllNotifications(breaks: Pausa[]) {
 
     const currentNotifications = await registration.getNotifications();
     
+    // Cancel all existing notifications
     for(const notification of currentNotifications) {
         notification.close();
     }
 
+    // Schedule new notifications for all active breaks
     for (const breakItem of breaks) {
         if(breakItem.activa) {
             await scheduleNotification(breakItem);
