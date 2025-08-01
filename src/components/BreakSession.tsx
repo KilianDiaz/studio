@@ -29,7 +29,7 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
   const router = useRouter();
   const { toast } = useToast();
   const [breaks] = useLocalStorage<Pausa[]>('breaks', []);
-  const [breakData, setBreakData] = useState<Pusa | null>(null);
+  const [breakData, setBreakData] = useState<Pausa | null>(null);
 
   const [exercises, setExercises] = useState<Ejercicio[]>([]);
   const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
@@ -37,7 +37,7 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
   const [sessionTimeLeft, setSessionTimeLeft] = useState(0);
   const [exerciseTimeLeft, setExerciseTimeLeft] = useState(0);
   const [hasFinished, setHasFinished] = useState(false);
-  const [isReady, setIsReady] = useState(false); // New state to control timer start
+  const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
     const foundBreak = breaks.find(b => b.id === breakId);
@@ -60,34 +60,42 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
           i++;
       }
 
+      // If no exercises could be added, add at least one short one if possible
+      if (selectedExercises.length === 0 && shuffled.length > 0) {
+        const shortestExercise = [...shuffled].sort((a,b) => a.duracion - b.duracion)[0];
+        if (shortestExercise.duracion <= totalDurationSeconds) {
+          selectedExercises.push(shortestExercise);
+        }
+      }
+
       setExercises(selectedExercises);
       if (selectedExercises.length > 0) {
         setExerciseTimeLeft(selectedExercises[0].duracion);
       }
-      setIsReady(true); // Mark as ready to start timers
+      setIsReady(true);
     } else {
-       // If break not found after a short delay, redirect.
-       setTimeout(() => {
-        if(!breakData) router.push('/');
+       const timer = setTimeout(() => {
+        const stillNoBreak = !breaks.find(b => b.id === breakId)
+        if (stillNoBreak) {
+          router.push('/');
+        }
        }, 1000);
+       return () => clearTimeout(timer);
     }
-  }, [breakId, breaks, router, breakData]);
+  }, [breakId, breaks, router]);
   
   // Effect for timers
   useEffect(() => {
-    // Only run if the session is ready, not paused, and not finished
-    if (!isReady || isPaused || hasFinished) return;
-
-    if (sessionTimeLeft <= 0) {
-      if (!hasFinished) {
-        setHasFinished(true);
-        toast({
-          title: "¡Pausa completada!",
-          description: `¡Buen trabajo! Has completado tu pausa de ${breakData?.nombre}.`,
-        });
-        setTimeout(() => router.push('/'), 3000);
-      }
-      return;
+    if (!isReady || isPaused || hasFinished || sessionTimeLeft <= 0) {
+        if(sessionTimeLeft <= 0 && isReady && !hasFinished){
+            setHasFinished(true);
+            toast({
+              title: "¡Pausa completada!",
+              description: `¡Buen trabajo! Has completado tu pausa de ${breakData?.nombre}.`,
+            });
+            setTimeout(() => router.push('/'), 3000);
+        }
+        return;
     }
 
     const timer = setInterval(() => {
@@ -97,20 +105,18 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
           return prev - 1;
         }
 
-        // Move to next exercise if there is one
         if (currentExerciseIndex < exercises.length - 1) {
           const nextIndex = currentExerciseIndex + 1;
           setCurrentExerciseIndex(nextIndex);
           return exercises[nextIndex].duracion;
         }
         
-        // This was the last exercise, let the session timer run out
         return 0;
       });
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isReady, isPaused, sessionTimeLeft, hasFinished, breakData, exercises, currentExerciseIndex, router, toast]);
+  }, [isReady, isPaused, hasFinished, sessionTimeLeft, breakData, exercises, currentExerciseIndex, router, toast]);
 
 
   const currentExercise = useMemo(() => exercises[currentExerciseIndex], [exercises, currentExerciseIndex]);
@@ -131,7 +137,7 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
     router.push('/');
   };
 
-  if (!breakData) {
+  if (!breakData || !isReady) {
     return (
       <Card className="w-full max-w-md text-center p-8">
         <CardTitle>Cargando pausa...</CardTitle>
@@ -220,5 +226,3 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
 };
 
 export default BreakSession;
-
-    
