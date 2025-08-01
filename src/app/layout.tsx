@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 import PwaInstaller from '@/components/PwaInstaller';
+import NotificationManager from '@/components/NotificationManager';
 
 export const metadata: Metadata = {
   title: 'Activa Ahora',
@@ -26,6 +27,7 @@ export default function RootLayout({
         {children}
         <Toaster />
         <PwaInstaller />
+        <NotificationManager />
       </body>
     </html>
   );

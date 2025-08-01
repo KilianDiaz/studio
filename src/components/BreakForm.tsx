@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useEffect, useMemo } from 'react';
-import { useForm } from 'react-hook-form';
+import React, { useEffect } from 'react';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import useLocalStorage from '@/hooks/useLocalStorage';
@@ -13,6 +13,7 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useToast } from '@/hooks/use-toast';
 import { v4 as uuidv4 } from 'uuid';
+import { scheduleNotification } from '@/lib/notifications';
 
 const daysOfWeek: Day[] = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 
@@ -35,7 +36,7 @@ const BreakForm: React.FC<BreakFormProps> = ({ breakId, onFinished }) => {
   const [breaks, setBreaks] = useLocalStorage<Pausa[]>('breaks', []);
   const { toast } = useToast();
 
-  const getInitialValues = (id: string | null) => {
+  const getInitialValues = (id: string | null): z.infer<typeof formSchema> => {
     if (id) {
       const existingBreak = breaks.find(b => b.id === id);
       if (existingBreak) {
@@ -61,14 +62,14 @@ const BreakForm: React.FC<BreakFormProps> = ({ breakId, onFinished }) => {
     resolver: zodResolver(formSchema),
     defaultValues: getInitialValues(breakId),
   });
-
+  
   useEffect(() => {
     form.reset(getInitialValues(breakId));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [breakId, form.reset]);
+  }, [breakId, breaks, form]);
 
 
-  const onSubmit = (values: z.infer<typeof formSchema>) => {
+  const onSubmit = async (values: z.infer<typeof formSchema>) => {
+    const isEditing = !!breakId;
     const newBreak: Pausa = {
       id: breakId || uuidv4(),
       nombre: values.nombre,
@@ -78,14 +79,18 @@ const BreakForm: React.FC<BreakFormProps> = ({ breakId, onFinished }) => {
       recordatorio: values.recordatorio,
       activa: true,
     };
-
-    if (breakId) {
+    
+    if (isEditing) {
        const existingBreak = breaks.find(b => b.id === breakId);
       setBreaks(breaks.map(b => (b.id === breakId ? { ...newBreak, activa: existingBreak?.activa ?? true } : b)));
       toast({ title: "Pausa actualizada", description: "Tu pausa activa ha sido guardada." });
     } else {
       setBreaks([...breaks, newBreak]);
       toast({ title: "Pausa creada", description: "Tu nueva pausa activa está lista." });
+    }
+    
+    if (newBreak.activa) {
+        await scheduleNotification(newBreak);
     }
     onFinished();
   };
@@ -109,26 +114,42 @@ const BreakForm: React.FC<BreakFormProps> = ({ breakId, onFinished }) => {
         <FormField
           control={form.control}
           name="dias"
-          render={({ field }) => (
+          render={() => (
             <FormItem>
               <FormLabel>Días de la semana</FormLabel>
-              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+               <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                 {daysOfWeek.map((day) => (
-                  <FormItem key={day} className="flex items-center space-x-2 space-y-0">
-                    <FormControl>
-                      <Checkbox
-                        checked={field.value?.includes(day)}
-                        onCheckedChange={(checked) => {
-                          const currentDays = field.value || [];
-                          const newDays = checked
-                            ? [...currentDays, day]
-                            : currentDays.filter((value) => value !== day);
-                          field.onChange(newDays);
-                        }}
-                      />
-                    </FormControl>
-                    <FormLabel className="font-normal text-sm">{day}</FormLabel>
-                  </FormItem>
+                  <FormField
+                    key={day}
+                    control={form.control}
+                    name="dias"
+                    render={({ field }) => {
+                      return (
+                        <FormItem
+                          key={day}
+                          className="flex flex-row items-start space-x-2 space-y-0"
+                        >
+                          <FormControl>
+                            <Checkbox
+                              checked={field.value?.includes(day)}
+                              onCheckedChange={(checked) => {
+                                return checked
+                                  ? field.onChange([...(field.value || []), day])
+                                  : field.onChange(
+                                      (field.value || []).filter(
+                                        (value) => value !== day
+                                      )
+                                    )
+                              }}
+                            />
+                          </FormControl>
+                          <FormLabel className="font-normal text-sm">
+                            {day}
+                          </FormLabel>
+                        </FormItem>
+                      )
+                    }}
+                  />
                 ))}
               </div>
               <FormMessage />
@@ -157,7 +178,7 @@ const BreakForm: React.FC<BreakFormProps> = ({ breakId, onFinished }) => {
               <FormControl>
                 <RadioGroup
                   onValueChange={field.onChange}
-                  defaultValue={field.value}
+                  defaultValue={String(field.value)}
                   className="flex space-x-4"
                 >
                   <FormItem className="flex items-center space-x-2 space-y-0">

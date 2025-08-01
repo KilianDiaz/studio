@@ -5,6 +5,7 @@ import useLocalStorage from '@/hooks/useLocalStorage';
 import type { Pausa } from '@/lib/types';
 import BreakCard from './BreakCard';
 import { AnimatePresence, motion } from 'framer-motion';
+import { scheduleNotification, cancelNotification } from '@/lib/notifications';
 
 interface BreakListProps {
   onEdit: (id: string) => void;
@@ -18,12 +19,23 @@ const BreakList: React.FC<BreakListProps> = ({ onEdit }) => {
     setHasMounted(true);
   }, []);
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
+    await cancelNotification(id);
     setBreaks(breaks.filter(b => b.id !== id));
   };
   
-  const toggleBreak = (id: string, activa: boolean) => {
-    setBreaks(breaks.map(b => b.id === id ? { ...b, activa } : b));
+  const toggleBreak = async (id: string, activa: boolean) => {
+    const updatedBreaks = breaks.map(b => b.id === id ? { ...b, activa } : b);
+    setBreaks(updatedBreaks);
+
+    const targetBreak = updatedBreaks.find(b => b.id === id);
+    if (targetBreak) {
+      if (activa) {
+        await scheduleNotification(targetBreak);
+      } else {
+        await cancelNotification(targetBreak.id);
+      }
+    }
   };
 
   if (!hasMounted) {
