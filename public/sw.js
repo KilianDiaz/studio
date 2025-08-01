@@ -1,47 +1,40 @@
-self.addEventListener('install', (event) => {
-  console.log('Service Worker installing.');
-  self.skipWaiting();
-});
-
-self.addEventListener('activate', (event) => {
-  console.log('Service Worker activating.');
-  event.waitUntil(self.clients.claim());
-});
-
-self.addEventListener('push', (event) => {
+self.addEventListener('push', event => {
+  // Fallback for push notifications, though we are using local notifications
   const data = event.data.json();
-  console.log('Push received.', data);
-  event.waitUntil(
-    self.registration.showNotification(data.title, {
-      body: data.body,
-      icon: data.icon,
-      data: data.data,
-    })
-  );
+  self.registration.showNotification(data.title, {
+    body: data.body,
+    icon: '/logo192.svg'
+  });
 });
 
-self.addEventListener('notificationclick', (event) => {
-  console.log('Notification clicked.');
+self.addEventListener('notificationclick', event => {
   event.notification.close();
   const urlToOpen = new URL(event.notification.data.url, self.location.origin).href;
 
   event.waitUntil(
     clients.matchAll({
       type: 'window',
-      includeUncontrolled: true,
-    }).then((clientList) => {
-      // Si la ventana de la app ya está abierta, la enfoca
-      if (clientList.length > 0) {
-        let client = clientList[0];
-        for (let i = 0; i < clientList.length; i++) {
-          if (clientList[i].focused) {
-            client = clientList[i];
-          }
+      includeUncontrolled: true
+    }).then(windowClients => {
+      // Check if there is already a window/tab open with the target URL
+      for (var i = 0; i < windowClients.length; i++) {
+        var client = windowClients[i];
+        if (client.url === urlToOpen && 'focus' in client) {
+          return client.focus();
         }
-        return client.focus().then(c => c.navigate(urlToOpen));
       }
-      // Si no, abre una nueva ventana
-      return clients.openWindow(urlToOpen);
+      // If not, check for any other open window/tab of the app
+      if (windowClients.length > 0) {
+        return windowClients[0].focus().then(client => client.navigate(urlToOpen));
+      }
+      // If there are no clients open, open a new one
+      if (clients.openWindow) {
+        return clients.openWindow(urlToOpen);
+      }
     })
   );
+});
+
+self.addEventListener('install', (event) => {
+  self.skipWaiting();
 });
