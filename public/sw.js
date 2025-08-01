@@ -1,57 +1,42 @@
-self.addEventListener('push', event => {
-  const data = event.data.json();
-  const options = {
-    body: data.body,
-    icon: '/logo192.png',
-    badge: '/logo-mono.svg',
-    vibrate: [200, 100, 200],
-    data: {
-      url: data.url,
-    },
-    actions: data.actions
-  };
-  event.waitUntil(
-    self.registration.showNotification(data.title, options)
-  );
+self.addEventListener('install', (event) => {
+  console.log('Service Worker installing.');
 });
 
-self.addEventListener('notificationclick', event => {
+self.addEventListener('activate', (event) => {
+  console.log('Service Worker activating.');
+});
+
+self.addEventListener('notificationclick', (event) => {
+  console.log('Notification clicked.');
   event.notification.close();
 
-  const urlToOpen = new URL(event.notification.data.url, self.location.origin).href;
+  const urlToOpen = event.notification.data.url;
 
-  const promiseChain = clients.matchAll({
-    type: 'window',
-    includeUncontrolled: true
-  }).then(windowClients => {
-    let matchingClient = null;
-
-    for (let i = 0; i < windowClients.length; i++) {
-      const-client = windowClients[i];
-      if (client.url === urlToOpen) {
-        matchingClient = client;
-        break;
+  if (event.action === 'postpone') {
+    // This is a placeholder. A real implementation would need
+    // to communicate with the app to reschedule the break.
+    console.log('Postpone action clicked');
+    // For now, we don't do anything, just close the notification.
+    return;
+  }
+  
+  event.waitUntil(
+    clients.matchAll({
+      type: 'window',
+      includeUncontrolled: true
+    }).then((clientList) => {
+      // Check if there's already a window open with the app.
+      for (const client of clientList) {
+        // Use a simple check if the client URL includes the origin.
+        // This is more robust than a strict URL match.
+        if (client.url.startsWith(self.location.origin) && 'focus' in client) {
+          return client.focus();
+        }
       }
-    }
-
-    if (matchingClient) {
-      return matchingClient.focus();
-    } else {
-      return clients.openWindow(urlToOpen);
-    }
-  });
-
-  event.waitUntil(promiseChain);
-  console.log("Notification clicked.");
-});
-
-
-self.addEventListener('install', event => {
-  console.log('Service worker installed');
-  self.skipWaiting();
-});
-
-self.addEventListener('activate', event => {
-  console.log('Service worker activated');
-  event.waitUntil(self.clients.claim());
+      // If no window is found, open a new one.
+      if (clients.openWindow) {
+        return clients.openWindow(urlToOpen);
+      }
+    })
+  );
 });

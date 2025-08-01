@@ -20,7 +20,8 @@ function getNextNotificationTime(breakItem: Pausa): number | null {
 
   let notificationTime: Date | null = null;
 
-  for (let i = 0; i < 8; i++) {
+  // Check from today for the next 7 days
+  for (let i = 0; i < 7; i++) {
     const date = new Date();
     date.setDate(now.getDate() + i);
     const dayOfWeek = date.getDay();
@@ -36,7 +37,35 @@ function getNextNotificationTime(breakItem: Pausa): number | null {
     }
   }
 
-  return notificationTime ? notificationTime.getTime() : null;
+  // If no time was found in the next 7 days, it must be next week
+  if (!notificationTime) {
+      const currentDay = now.getDay();
+      let nextDay = -1;
+      
+      // Find the first scheduled day after today
+      for (const day of sortedDays) {
+          if (day > currentDay) {
+              nextDay = day;
+              break;
+          }
+      }
+      
+      // If no day is found later this week, take the first scheduled day of next week
+      if (nextDay === -1) {
+          nextDay = sortedDays[0];
+      }
+
+      const daysUntilNext = (nextDay - currentDay + 7) % 7;
+      const daysToAdd = daysUntilNext === 0 ? 7 : daysUntilNext;
+
+      const finalDate = new Date();
+      finalDate.setDate(now.getDate() + daysToAdd);
+      finalDate.setHours(hours, minutes, 0, 0);
+      notificationTime = finalDate;
+  }
+
+
+  return notificationTime.getTime();
 }
 
 
@@ -52,6 +81,7 @@ export async function scheduleNotification(breakItem: Pausa) {
     return;
   }
 
+  // Cancel any existing notification for this break to avoid duplicates
   await cancelNotification(breakItem.id);
 
   const notificationTime = getNextNotificationTime(breakItem);
@@ -63,36 +93,48 @@ export async function scheduleNotification(breakItem: Pausa) {
 
     console.log(`Scheduling notification for '${breakItem.nombre}' at ${new Date(notificationTime).toLocaleString()}.`);
     
-    const notificationOptions = {
-        tag: breakItem.id,
-        body: breakItem.recordatorio || `Es momento de '${breakItem.nombre}'.`,
-        icon: '/logo192.svg',
-        badge: '/logo-mono.svg',
-        vibrate: [200, 100, 200],
-        silent: false,
-        data: {
-          url: `/break/${breakItem.id}`,
-        },
-        actions: [
-            { action: 'view', title: 'Ver Pausa' },
-            { action: 'postpone', title: 'Posponer' }
-        ]
-    };
-    
+    // Check for `showTrigger` availability (for scheduled notifications)
     if ('showTrigger' in Notification.prototype) {
         try {
           await registration.showNotification('¡Hora de tu pausa activa!', {
-              ...notificationOptions,
+              tag: breakItem.id,
+              body: breakItem.recordatorio || `Es momento de '${breakItem.nombre}'.`,
+              icon: '/logo192.svg',
+              badge: '/logo-mono.svg',
+              vibrate: [200, 100, 200],
               timestamp: notificationTime,
               showTrigger: new (window as any).TimestampTrigger(notificationTime),
+              data: {
+                url: `/break/${breakItem.id}`,
+              },
+              actions: [
+                  { action: 'view', title: 'Ver Pausa' },
+                  { action: 'postpone', title: 'Posponer' }
+              ]
           });
           console.log("Scheduled notification with Trigger.");
         } catch(e) {
             console.error("Error scheduling with Trigger: ", e);
         }
     } else {
+        // Fallback for browsers that don't support showTrigger (e.g., Firefox)
+        // This will show the notification immediately after the delay.
+        // It requires the service worker to be active.
         setTimeout(() => {
-            registration.showNotification('¡Hora de tu pausa activa!', notificationOptions);
+            registration.showNotification('¡Hora de tu pausa activa!', {
+                tag: breakItem.id,
+                body: breakItem.recordatorio || `Es momento de '${breakItem.nombre}'.`,
+                icon: '/logo192.svg',
+                badge: '/logo-mono.svg',
+                vibrate: [200, 100, 200],
+                data: {
+                  url: `/break/${breakItem.id}`,
+                },
+                actions: [
+                  { action: 'view', title: 'Ver Pausa' },
+                  { action: 'postpone', title: 'Posponer' }
+                ]
+            });
             console.log("Scheduled notification with Fallback (setTimeout).");
         }, delay);
     }
@@ -117,10 +159,12 @@ export async function syncAllNotifications(breaks: Pausa[]) {
 
     const currentNotifications = await registration.getNotifications();
     
+    // Cancel all existing notifications
     for(const notification of currentNotifications) {
         notification.close();
     }
 
+    // Schedule new notifications for all active breaks
     for (const breakItem of breaks) {
         if(breakItem.activa) {
             await scheduleNotification(breakItem);
