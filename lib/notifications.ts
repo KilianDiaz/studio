@@ -18,49 +18,54 @@ function getNextNotificationTime(breakItem: Pausa): number | null {
   const sortedDays = breakItem.dias.map(day => dayNameToNumber[day]).sort((a,b) => a - b);
   if(sortedDays.length === 0) return null;
 
+  let notificationTime: Date | null = null;
+
+  // Check from today for the next 7 days
   for (let i = 0; i < 7; i++) {
-    const date = new Date(now);
+    const date = new Date();
     date.setDate(now.getDate() + i);
-    
     const dayOfWeek = date.getDay();
 
     if (sortedDays.includes(dayOfWeek)) {
-      const notificationTime = new Date(date);
-      notificationTime.setHours(hours, minutes, 0, 0);
+      const potentialNotificationTime = new Date(date);
+      potentialNotificationTime.setHours(hours, minutes, 0, 0);
 
-      if (notificationTime > now) {
-        return notificationTime.getTime();
+      if (potentialNotificationTime > now) {
+        notificationTime = potentialNotificationTime;
+        break; 
       }
     }
   }
 
-  // If all days this week are past, check next week
-  const nextWeekDate = new Date(now);
-  const currentDay = now.getDay();
-
-  // Find the next scheduled day
-  let nextDay = -1;
-  for(const day of sortedDays) {
-      if(day > currentDay) {
-          nextDay = day;
-          break;
+  // If no time was found in the next 7 days, it must be next week
+  if (!notificationTime) {
+      const currentDay = now.getDay();
+      let nextDay = -1;
+      
+      // Find the first scheduled day after today
+      for (const day of sortedDays) {
+          if (day > currentDay) {
+              nextDay = day;
+              break;
+          }
       }
+      
+      // If no day is found later this week, take the first scheduled day of next week
+      if (nextDay === -1) {
+          nextDay = sortedDays[0];
+      }
+
+      const daysUntilNext = (nextDay - currentDay + 7) % 7;
+      const daysToAdd = daysUntilNext === 0 ? 7 : daysUntilNext;
+
+      const finalDate = new Date();
+      finalDate.setDate(now.getDate() + daysToAdd);
+      finalDate.setHours(hours, minutes, 0, 0);
+      notificationTime = finalDate;
   }
-  // If no day found in the rest of the week, take the first day of next week
-  if(nextDay === -1) {
-      nextDay = sortedDays[0];
-  }
-  
-  const daysUntilNext = (nextDay - currentDay + 7) % 7;
-  // If the next day is today, but the time has passed, schedule for next week
-  const daysToAdd = daysUntilNext === 0 && new Date().setHours(hours, minutes, 0, 0) < now.getTime() ? 7 : daysUntilNext;
 
 
-  const finalDate = new Date(now);
-  finalDate.setDate(now.getDate() + daysToAdd);
-  finalDate.setHours(hours, minutes, 0, 0);
-
-  return finalDate.getTime();
+  return notificationTime.getTime();
 }
 
 
@@ -71,8 +76,8 @@ export async function scheduleNotification(breakItem: Pausa) {
   }
   
   const registration = await navigator.serviceWorker.ready;
-  if (!registration) {
-    console.log('Service Worker not ready.');
+  if (!registration || !registration.showNotification) {
+    console.log('Service Worker not ready or does not support showNotification.');
     return;
   }
 
@@ -88,18 +93,29 @@ export async function scheduleNotification(breakItem: Pausa) {
 
     console.log(`Scheduling notification for '${breakItem.nombre}' at ${new Date(notificationTime).toLocaleString()}.`);
     
-    // Check for `showTrigger` availability
+    // Check for `showTrigger` availability (for scheduled notifications)
     if ('showTrigger' in Notification.prototype) {
-        await registration.showNotification('¡Hora de tu pausa activa!', {
-            tag: breakItem.id,
-            body: breakItem.recordatorio || `Es momento de '${breakItem.nombre}'.`,
-            icon: '/logo192.svg',
-            timestamp: notificationTime,
-            showTrigger: new (window as any).TimestampTrigger(notificationTime),
-            data: {
-              url: `/break/${breakItem.id}`,
-            },
-        });
+        try {
+          await registration.showNotification('¡Hora de tu pausa activa!', {
+              tag: breakItem.id,
+              body: breakItem.recordatorio || `Es momento de '${breakItem.nombre}'.`,
+              icon: '/logo192.svg',
+              badge: '/logo-mono.svg',
+              vibrate: [200, 100, 200],
+              timestamp: notificationTime,
+              showTrigger: new (window as any).TimestampTrigger(notificationTime),
+              data: {
+                url: `/break/${breakItem.id}`,
+              },
+              actions: [
+                  { action: 'view', title: 'Ver Pausa' },
+                  { action: 'postpone', title: 'Posponer' }
+              ]
+          });
+          console.log("Scheduled notification with Trigger.");
+        } catch(e) {
+            console.error("Error scheduling with Trigger: ", e);
+        }
     } else {
         // Fallback for browsers that don't support showTrigger (e.g., Firefox)
         // This will show the notification immediately after the delay.
@@ -109,10 +125,17 @@ export async function scheduleNotification(breakItem: Pausa) {
                 tag: breakItem.id,
                 body: breakItem.recordatorio || `Es momento de '${breakItem.nombre}'.`,
                 icon: '/logo192.svg',
+                badge: '/logo-mono.svg',
+                vibrate: [200, 100, 200],
                 data: {
                   url: `/break/${breakItem.id}`,
                 },
+                actions: [
+                  { action: 'view', title: 'Ver Pausa' },
+                  { action: 'postpone', title: 'Posponer' }
+                ]
             });
+            console.log("Scheduled notification with Fallback (setTimeout).");
         }, delay);
     }
   }
@@ -149,5 +172,3 @@ export async function syncAllNotifications(breaks: Pausa[]) {
     }
     console.log("All notifications have been re-synced.");
 }
-
-    

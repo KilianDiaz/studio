@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import useLocalStorage from '@/hooks/useLocalStorage';
 import type { Pausa, Ejercicio } from '@/lib/types';
@@ -11,6 +11,7 @@ import { Progress } from '@/components/ui/progress';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import * as LucideIcons from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { scheduleNotification } from '@/lib/notifications';
 
 interface BreakSessionProps {
   breakId: string;
@@ -28,7 +29,7 @@ const shuffleArray = <T,>(array: T[]): T[] => {
 const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
   const router = useRouter();
   const { toast } = useToast();
-  const [breaks] = useLocalStorage<Pausa[]>('breaks', []);
+  const [breaks, setBreaks] = useLocalStorage<Pausa[]>('breaks', []);
   const [breakData, setBreakData] = useState<Pausa | null>(null);
 
   const [exercises, setExercises] = useState<Ejercicio[]>([]);
@@ -60,7 +61,6 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
           i++;
       }
 
-      // If no exercises could be added, add at least one short one if possible
       if (selectedExercises.length === 0 && shuffled.length > 0) {
         const shortestExercise = [...shuffled].sort((a,b) => a.duracion - b.duracion)[0];
         if (shortestExercise.duracion <= totalDurationSeconds) {
@@ -84,17 +84,16 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
     }
   }, [breakId, breaks, router]);
   
-  // Effect for timers
   useEffect(() => {
-    if (!isReady || isPaused || hasFinished || sessionTimeLeft <= 0) {
-        if(sessionTimeLeft <= 0 && isReady && !hasFinished){
-            setHasFinished(true);
-            toast({
-              title: "¡Pausa completada!",
-              description: `¡Buen trabajo! Has completado tu pausa de ${breakData?.nombre}.`,
-            });
-            setTimeout(() => router.push('/'), 3000);
-        }
+    if (!isReady || isPaused || hasFinished) return;
+
+    if (sessionTimeLeft <= 0) {
+        setHasFinished(true);
+        toast({
+          title: "¡Pausa completada!",
+          description: `¡Buen trabajo! Has completado tu pausa de ${breakData?.nombre}.`,
+        });
+        setTimeout(() => router.push('/'), 3000);
         return;
     }
 
@@ -121,21 +120,28 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
 
   const currentExercise = useMemo(() => exercises[currentExerciseIndex], [exercises, currentExerciseIndex]);
 
-  const postpone = (minutes: number) => {
-    toast({
-      title: 'Pausa pospuesta',
-      description: `La pausa se ha pospuesto por ${minutes} minutos. Recibirás una notificación (simulado).`,
-    });
-    router.push('/');
-  };
+  const postpone = useCallback(async (minutes: number) => {
+    if (!breakData) return;
 
-  const postponeToNext = () => {
+    const now = new Date();
+    const newTime = new Date(now.getTime() + minutes * 60 * 1000);
+    const newHour = String(newTime.getHours()).padStart(2, '0');
+    const newMinute = String(newTime.getMinutes()).padStart(2, '0');
+
+    const updatedBreak: Pausa = {
+      ...breakData,
+      hora: `${newHour}:${newMinute}`,
+    };
+    
+    setBreaks(breaks.map(b => b.id === breakId ? updatedBreak : b));
+    await scheduleNotification(updatedBreak);
+
     toast({
       title: 'Pausa pospuesta',
-      description: 'La pausa se ha pospuesto a la siguiente sesión programada (simulado).',
+      description: `La pausa se ha pospuesto por ${minutes} minutos.`,
     });
     router.push('/');
-  };
+  }, [breakData, breaks, setBreaks, breakId, router, toast]);
 
   if (!breakData || !isReady) {
     return (
@@ -217,7 +223,6 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
             <DropdownMenuItem onClick={() => postpone(10)}>10 minutos</DropdownMenuItem>
             <DropdownMenuItem onClick={() => postpone(30)}>30 minutos</DropdownMenuItem>
             <DropdownMenuItem onClick={() => postpone(60)}>1 hora</DropdownMenuItem>
-            <DropdownMenuItem onClick={postponeToNext}>Próxima sesión</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </CardFooter>

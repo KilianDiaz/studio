@@ -1,40 +1,63 @@
-self.addEventListener('push', event => {
-  // Fallback for push notifications, though we are using local notifications
-  const data = event.data.json();
-  self.registration.showNotification(data.title, {
-    body: data.body,
-    icon: '/logo192.svg'
-  });
+self.addEventListener('install', (event) => {
+  console.log('Service Worker installing.');
+  self.skipWaiting();
 });
 
-self.addEventListener('notificationclick', event => {
+self.addEventListener('activate', (event) => {
+  console.log('Service Worker activating.');
+  event.waitUntil(self.clients.claim());
+});
+
+self.addEventListener('push', (event) => {
+  const data = event.data.json();
+  const title = data.title || 'Activa Ahora';
+  const options = {
+    body: data.body,
+    icon: data.icon || '/logo192.svg',
+    badge: data.badge || '/logo-mono.svg',
+    vibrate: data.vibrate || [200, 100, 200],
+    data: data.data,
+    actions: data.actions || [],
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+
+self.addEventListener('notificationclick', (event) => {
+  console.log('Notification clicked.');
   event.notification.close();
+
   const urlToOpen = new URL(event.notification.data.url, self.location.origin).href;
 
-  event.waitUntil(
-    clients.matchAll({
+  const openOrFocusClient = async () => {
+    const windowClients = await clients.matchAll({
       type: 'window',
-      includeUncontrolled: true
-    }).then(windowClients => {
-      // Check if there is already a window/tab open with the target URL
-      for (var i = 0; i < windowClients.length; i++) {
-        var client = windowClients[i];
-        if (client.url === urlToOpen && 'focus' in client) {
-          return client.focus();
-        }
-      }
-      // If not, check for any other open window/tab of the app
-      if (windowClients.length > 0) {
-        return windowClients[0].focus().then(client => client.navigate(urlToOpen));
-      }
-      // If there are no clients open, open a new one
-      if (clients.openWindow) {
-        return clients.openWindow(urlToOpen);
-      }
-    })
-  );
-});
+      includeUncontrolled: true,
+    });
 
-self.addEventListener('install', (event) => {
-  self.skipWaiting();
+    for (let i = 0; i < windowClients.length; i++) {
+      const client = windowClients[i];
+      if (client.url === urlToOpen && 'focus' in client) {
+        return client.focus();
+      }
+    }
+
+    if (clients.openWindow) {
+      return clients.openWindow(urlToOpen);
+    }
+  };
+  
+  const handlePostpone = async () => {
+    // This is a simplified example. A real implementation would need
+    // to communicate with the main app to reschedule the notification.
+    console.log('Postpone action clicked. A real app would re-schedule here.');
+  };
+
+  if (event.action === 'view') {
+     event.waitUntil(openOrFocusClient());
+  } else if (event.action === 'postpone') {
+    event.waitUntil(handlePostpone());
+  } else {
+    event.waitUntil(openOrFocusClient());
+  }
 });
