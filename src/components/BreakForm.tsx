@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -35,7 +35,7 @@ const BreakForm: React.FC<BreakFormProps> = ({ breakId, onFinished }) => {
   const [breaks, setBreaks] = useLocalStorage<Pausa[]>('breaks', []);
   const { toast } = useToast();
 
-  const defaultValues = useMemo(() => {
+  const getInitialValues = () => {
     if (breakId) {
       const existingBreak = breaks.find(b => b.id === breakId);
       if (existingBreak) {
@@ -55,16 +55,16 @@ const BreakForm: React.FC<BreakFormProps> = ({ breakId, onFinished }) => {
       duracion: '5',
       recordatorio: '',
     };
-  }, [breakId, breaks]);
+  };
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
-    defaultValues,
+    defaultValues: getInitialValues(),
   });
 
   useEffect(() => {
-    form.reset(defaultValues);
-  }, [defaultValues, form]);
+    form.reset(getInitialValues());
+  }, [breakId, breaks, form]);
 
 
   const onSubmit = (values: z.infer<typeof formSchema>) => {
