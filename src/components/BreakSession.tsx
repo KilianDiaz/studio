@@ -67,10 +67,10 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
           selectedExercises.push(shortestExercise);
         }
       }
-
-      setExercises(selectedExercises);
-      if (selectedExercises.length > 0) {
-        setExerciseTimeLeft(selectedExercises[0].duracion);
+      
+      if(selectedExercises.length > 0) {
+          setExercises(selectedExercises);
+          setExerciseTimeLeft(selectedExercises[0].duracion);
       }
       setIsReady(true);
     } else {
@@ -85,7 +85,7 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
   }, [breakId, breaks, router]);
   
   useEffect(() => {
-    if (!isReady || isPaused || hasFinished) return;
+    if (!isReady || isPaused || hasFinished || !breakData) return;
 
     if (sessionTimeLeft <= 0) {
         setHasFinished(true);
@@ -110,6 +110,8 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
           return exercises[nextIndex].duracion;
         }
         
+        // This was the last exercise
+        setHasFinished(true);
         return 0;
       });
     }, 1000);
@@ -151,7 +153,7 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
     );
   }
 
-  if (hasFinished) {
+  if (hasFinished && !isPaused) {
     return (
        <Card className="w-full max-w-md mx-auto shadow-2xl">
          <CardHeader className="text-center">

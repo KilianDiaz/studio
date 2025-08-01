@@ -99,18 +99,14 @@ export async function scheduleNotification(breakItem: Pausa) {
           await registration.showNotification('¡Hora de tu pausa activa!', {
               tag: breakItem.id,
               body: breakItem.recordatorio || `Es momento de '${breakItem.nombre}'.`,
-              icon: '/logo192.svg',
-              badge: '/logo-mono.svg',
-              vibrate: [200, 100, 200],
+              icon: '/logo192.png',
+              badge: '/logo-mono.png',
+              silent: false, // Make it sound!
               timestamp: notificationTime,
               showTrigger: new (window as any).TimestampTrigger(notificationTime),
               data: {
                 url: `/break/${breakItem.id}`,
               },
-              actions: [
-                  { action: 'view', title: 'Ver Pausa' },
-                  { action: 'postpone', title: 'Posponer' }
-              ]
           });
           console.log("Scheduled notification with Trigger.");
         } catch(e) {
@@ -124,16 +120,12 @@ export async function scheduleNotification(breakItem: Pausa) {
             registration.showNotification('¡Hora de tu pausa activa!', {
                 tag: breakItem.id,
                 body: breakItem.recordatorio || `Es momento de '${breakItem.nombre}'.`,
-                icon: '/logo192.svg',
-                badge: '/logo-mono.svg',
-                vibrate: [200, 100, 200],
+                icon: '/logo192.png',
+                badge: '/logo-mono.png',
+                silent: false, // Make it sound!
                 data: {
                   url: `/break/${breakItem.id}`,
                 },
-                actions: [
-                  { action: 'view', title: 'Ver Pausa' },
-                  { action: 'postpone', title: 'Posponer' }
-                ]
             });
             console.log("Scheduled notification with Fallback (setTimeout).");
         }, delay);
