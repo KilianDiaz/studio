@@ -63,33 +63,37 @@ function getNextNotificationTime(breakItem: Pausa): number | null {
   return notificationTime.getTime();
 }
 
-function showNotification(title: string, options: NotificationOptions) {
-  if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+function postMessageToSW(message: any) {
+  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage(message);
+  } else {
     navigator.serviceWorker.ready.then(registration => {
-      registration.showNotification(title, options);
+      registration.active?.postMessage(message);
     });
   }
 }
+
+function showNotificationViaSW(title: string, options: NotificationOptions) {
+    postMessageToSW({
+        type: 'SHOW_NOTIFICATION',
+        payload: { title, options }
+    });
+}
+
 
 export async function schedulePostponedNotification(breakItem: Pausa, postponeMinutes: number) {
     const notificationTime = Date.now() + postponeMinutes * 60 * 1000;
     const delay = notificationTime - Date.now();
     
     setTimeout(() => {
-        showNotification('¡Pausa pospuesta!', {
+        showNotificationViaSW('¡Pausa pospuesta!', {
             tag: `postponed-${breakItem.id}-${Date.now()}`,
             body: `Tu pausa '${breakItem.nombre}' comenzará pronto.`,
-            icon: '/logo192.svg',
-            badge: '/logo-mono.svg',
-            vibrate: [200, 100, 200],
-            silent: false,
-            requireInteraction: true,
             data: { url: `/break/${breakItem.id}` },
             actions: [{ action: 'view', title: 'Ver Pausa' }]
         });
     }, Math.max(0, delay));
     
-    // Reschedule the original break
     await scheduleNotification(breakItem);
 }
 
@@ -108,14 +112,9 @@ export async function scheduleNotification(breakItem: Pausa) {
     if (delay < 0) return;
 
     setTimeout(() => {
-        showNotification('¡Hora de tu pausa activa!', {
+        showNotificationViaSW('¡Hora de tu pausa activa!', {
             tag: breakItem.id,
             body: breakItem.recordatorio || `Es momento de '${breakItem.nombre}'.`,
-            icon: '/logo192.svg',
-            badge: '/logo-mono.svg',
-            vibrate: [200, 100, 200],
-            silent: false,
-            requireInteraction: true,
             timestamp: notificationTime,
             data: { url: `/break/${breakItem.id}` },
             actions: [
