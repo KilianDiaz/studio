@@ -1,48 +1,85 @@
+/// <reference lib="webworker" />
+
+// This is a basic service worker that allows the app to be installed and work offline.
+// It also handles push notifications.
+
+const CACHE_NAME = 'activa-ahora-cache-v1';
+const urlsToCache = [
+  '/',
+  '/manifest.json',
+  '/logo192.svg',
+  '/logo512.svg',
+  '/logo-mono.svg',
+  '/favicon.ico',
+];
+
 self.addEventListener('install', (event) => {
-  event.waitUntil(self.skipWaiting());
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then((cache) => {
+        console.log('Opened cache');
+        return cache.addAll(urlsToCache);
+      })
+  );
 });
 
-self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+self.addEventListener('fetch', (event) => {
+  event.respondWith(
+    caches.match(event.request)
+      .then((response) => {
+        if (response) {
+          return response;
+        }
+        return fetch(event.request);
+      })
+  );
 });
 
 self.addEventListener('notificationclick', (event) => {
-  const notification = event.notification;
-  const action = event.action;
-  const breakId = notification.tag;
+  console.log('On notification click: ', event.notification.tag);
+  event.notification.close();
 
-  notification.close();
+  const urlToOpen = event.notification.data.url;
 
-  // Handle the 'postpone' action separately
-  if (action === 'postpone') {
-    // In a real app, you might message the client to handle this.
-    // For now, we just log it. A more complex implementation
-    // would require client-side communication.
-    console.log('Postpone action clicked. Implement postponing logic here.');
-    // Example: Reschedule for 10 minutes later. This is complex from a SW.
-    return; 
-  }
-
-  // For both the 'view' action and a general click on the notification body
-  const urlToOpen = new URL(`/break/${breakId}`, self.location.origin).href;
-
-  event.waitUntil(
-    clients.matchAll({
-      type: 'window',
-      includeUncontrolled: true
-    }).then(clientList => {
-      // Check if there's already a window open with the app
-      for (const client of clientList) {
-        // A more robust check might be needed if your app has complex routing
-        if (client.url.startsWith(self.location.origin) && 'focus' in client) {
-          client.navigate(urlToOpen);
-          return client.focus();
+  if (event.action === 'postpone') {
+    // This is a simple postpone for 10 minutes from now.
+    const postponeTime = Date.now() + 10 * 60 * 1000;
+    event.waitUntil(
+      self.registration.showNotification('Pausa pospuesta', {
+        body: `Tu pausa fue pospuesta. Te recordaremos en 10 minutos.`,
+        icon: '/logo192.svg',
+        badge: '/logo-mono.svg',
+        vibrate: [200, 100, 200],
+        silent: false,
+        timestamp: postponeTime,
+        showTrigger: new self.TimestampTrigger(postponeTime),
+        data: {
+          url: urlToOpen,
+        },
+        actions: [
+          { action: 'view', title: 'Ver Pausa' },
+        ]
+      })
+    );
+  } else {
+    // This handles both 'view' action and the general click on the notification
+    event.waitUntil(
+      clients.matchAll({
+        type: 'window',
+        includeUncontrolled: true,
+      }).then((clientList) => {
+        // Check if there's already a window open with the app
+        for (const client of clientList) {
+          // If a window is found, focus it.
+          if (client.url.includes(self.location.origin) && 'focus' in client) {
+            return client.focus();
+          }
         }
-      }
-      // If no window is found, open a new one
-      if (clients.openWindow) {
-        return clients.openWindow(urlToOpen);
-      }
-    })
-  );
+        // If no window is found, open a new one.
+        if (clients.openWindow) {
+          return clients.openWindow(urlToOpen);
+        }
+      })
+    );
+  }
 });

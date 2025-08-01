@@ -20,8 +20,7 @@ function getNextNotificationTime(breakItem: Pausa): number | null {
 
   let notificationTime: Date | null = null;
 
-  // Check from today for the next 7 days
-  for (let i = 0; i < 7; i++) {
+  for (let i = 0; i < 8; i++) { // Check up to 8 days to cover all week cases
     const date = new Date();
     date.setDate(now.getDate() + i);
     const dayOfWeek = date.getDay();
@@ -37,12 +36,10 @@ function getNextNotificationTime(breakItem: Pausa): number | null {
     }
   }
 
-  // If no time was found in the next 7 days, it must be next week
   if (!notificationTime) {
       const currentDay = now.getDay();
       let nextDay = -1;
       
-      // Find the first scheduled day after today
       for (const day of sortedDays) {
           if (day > currentDay) {
               nextDay = day;
@@ -50,7 +47,6 @@ function getNextNotificationTime(breakItem: Pausa): number | null {
           }
       }
       
-      // If no day is found later this week, take the first scheduled day of next week
       if (nextDay === -1) {
           nextDay = sortedDays[0];
       }
@@ -68,6 +64,58 @@ function getNextNotificationTime(breakItem: Pausa): number | null {
   return notificationTime.getTime();
 }
 
+async function showNotification(registration: ServiceWorkerRegistration, title: string, options: NotificationOptions) {
+    if ('showTrigger' in Notification.prototype) {
+        try {
+          await registration.showNotification(title, options);
+          console.log("Scheduled notification with Trigger:", options.body);
+        } catch(e) {
+            console.error("Error scheduling with Trigger: ", e);
+        }
+    } else {
+        const delay = (options.timestamp || 0) - Date.now();
+        if (delay < 0) return;
+
+        setTimeout(() => {
+            registration.showNotification(title, options);
+            console.log("Scheduled notification with Fallback (setTimeout):", options.body);
+        }, delay);
+    }
+}
+
+export async function schedulePostponedNotification(breakItem: Pausa, postponeMinutes: number) {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('Notification' in window) || Notification.permission !== 'granted') {
+        console.log('Cannot schedule postponed notification. Conditions not met.');
+        return;
+    }
+    const registration = await navigator.serviceWorker.ready;
+    if (!registration || !registration.showNotification) {
+        console.log('Service Worker not ready or does not support showNotification.');
+        return;
+    }
+
+    const notificationTime = Date.now() + postponeMinutes * 60 * 1000;
+
+    console.log(`Scheduling a one-time postponed notification for '${breakItem.nombre}' at ${new Date(notificationTime).toLocaleString()}.`);
+    
+    await showNotification(registration, '¡Hora de tu pausa activa!', {
+      tag: `postponed-${breakItem.id}-${Date.now()}`,
+      body: breakItem.recordatorio || `Es momento de '${breakItem.nombre}'.`,
+      icon: '/logo192.svg',
+      badge: '/logo-mono.svg',
+      vibrate: [200, 100, 200],
+      timestamp: notificationTime,
+      showTrigger: new (window as any).TimestampTrigger(notificationTime),
+      data: {
+        url: `/break/${breakItem.id}`,
+      },
+      actions: [
+          { action: 'view', title: 'Ver Pausa' },
+      ],
+      silent: false
+    });
+}
+
 
 export async function scheduleNotification(breakItem: Pausa) {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('Notification' in window) || Notification.permission !== 'granted') {
@@ -81,63 +129,30 @@ export async function scheduleNotification(breakItem: Pausa) {
     return;
   }
 
-  // Cancel any existing notification for this break to avoid duplicates
   await cancelNotification(breakItem.id);
 
   const notificationTime = getNextNotificationTime(breakItem);
   
   if (notificationTime) {
-    const delay = notificationTime - Date.now();
-    
-    if(delay < 0) return;
-
     console.log(`Scheduling notification for '${breakItem.nombre}' at ${new Date(notificationTime).toLocaleString()}.`);
     
-    // Check for `showTrigger` availability (for scheduled notifications)
-    if ('showTrigger' in Notification.prototype) {
-        try {
-          await registration.showNotification('¡Hora de tu pausa activa!', {
-              tag: breakItem.id,
-              body: breakItem.recordatorio || `Es momento de '${breakItem.nombre}'.`,
-              icon: '/logo192.svg',
-              badge: '/logo-mono.svg',
-              vibrate: [200, 100, 200],
-              timestamp: notificationTime,
-              showTrigger: new (window as any).TimestampTrigger(notificationTime),
-              data: {
-                url: `/break/${breakItem.id}`,
-              },
-              actions: [
-                  { action: 'view', title: 'Ver Pausa' },
-                  { action: 'postpone', title: 'Posponer' }
-              ]
-          });
-          console.log("Scheduled notification with Trigger.");
-        } catch(e) {
-            console.error("Error scheduling with Trigger: ", e);
-        }
-    } else {
-        // Fallback for browsers that don't support showTrigger (e.g., Firefox)
-        // This will show the notification immediately after the delay.
-        // It requires the service worker to be active.
-        setTimeout(() => {
-            registration.showNotification('¡Hora de tu pausa activa!', {
-                tag: breakItem.id,
-                body: breakItem.recordatorio || `Es momento de '${breakItem.nombre}'.`,
-                icon: '/logo192.svg',
-                badge: '/logo-mono.svg',
-                vibrate: [200, 100, 200],
-                data: {
-                  url: `/break/${breakItem.id}`,
-                },
-                actions: [
-                  { action: 'view', title: 'Ver Pausa' },
-                  { action: 'postpone', title: 'Posponer' }
-                ]
-            });
-            console.log("Scheduled notification with Fallback (setTimeout).");
-        }, delay);
-    }
+    await showNotification(registration, '¡Hora de tu pausa activa!', {
+        tag: breakItem.id,
+        body: breakItem.recordatorio || `Es momento de '${breakItem.nombre}'.`,
+        icon: '/logo192.svg',
+        badge: '/logo-mono.svg',
+        vibrate: [200, 100, 200],
+        timestamp: notificationTime,
+        showTrigger: new (window as any).TimestampTrigger(notificationTime),
+        data: {
+          url: `/break/${breakItem.id}`,
+        },
+        actions: [
+            { action: 'view', title: 'Ver Pausa' },
+            { action: 'postpone', title: 'Posponer' }
+        ],
+        silent: false
+    });
   }
 }
 
@@ -159,12 +174,10 @@ export async function syncAllNotifications(breaks: Pausa[]) {
 
     const currentNotifications = await registration.getNotifications();
     
-    // Cancel all existing notifications
     for(const notification of currentNotifications) {
         notification.close();
     }
 
-    // Schedule new notifications for all active breaks
     for (const breakItem of breaks) {
         if(breakItem.activa) {
             await scheduleNotification(breakItem);

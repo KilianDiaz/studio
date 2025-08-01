@@ -11,7 +11,7 @@ import { Progress } from '@/components/ui/progress';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import * as LucideIcons from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { scheduleNotification } from '@/lib/notifications';
+import { scheduleNotification, schedulePostponedNotification } from '@/lib/notifications';
 
 interface BreakSessionProps {
   breakId: string;
@@ -29,7 +29,7 @@ const shuffleArray = <T,>(array: T[]): T[] => {
 const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
   const router = useRouter();
   const { toast } = useToast();
-  const [breaks, setBreaks] = useLocalStorage<Pausa[]>('breaks', []);
+  const [breaks] = useLocalStorage<Pausa[]>('breaks', []);
   const [breakData, setBreakData] = useState<Pausa | null>(null);
 
   const [exercises, setExercises] = useState<Ejercicio[]>([]);
@@ -60,7 +60,7 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
           }
           i++;
       }
-
+      
       if (selectedExercises.length === 0 && shuffled.length > 0) {
         const shortestExercise = [...shuffled].sort((a,b) => a.duracion - b.duracion)[0];
         if (shortestExercise.duracion <= totalDurationSeconds) {
@@ -72,7 +72,7 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
           setExercises(selectedExercises);
           setExerciseTimeLeft(selectedExercises[0].duracion);
       }
-      setIsReady(true);
+      setIsReady(true); 
     } else {
        const timer = setTimeout(() => {
         const stillNoBreak = !breaks.find(b => b.id === breakId)
@@ -122,31 +122,20 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
 
   const postpone = useCallback(async (minutes: number) => {
     if (!breakData) return;
-
-    const now = new Date();
-    const newTime = new Date(now.getTime() + minutes * 60 * 1000);
-    const newHour = String(newTime.getHours()).padStart(2, '0');
-    const newMinute = String(newTime.getMinutes()).padStart(2, '0');
-
-    const updatedBreak: Pausa = {
-      ...breakData,
-      hora: `${newHour}:${newMinute}`,
-    };
     
-    setBreaks(breaks.map(b => b.id === breakId ? updatedBreak : b));
-    await scheduleNotification(updatedBreak);
+    await schedulePostponedNotification(breakData, minutes);
+    await scheduleNotification(breakData); 
 
     toast({
       title: 'Pausa pospuesta',
       description: `La pausa se ha pospuesto por ${minutes} minutos.`,
     });
     router.push('/');
-  }, [breakData, breaks, setBreaks, breakId, router, toast]);
+  }, [breakData, router, toast]);
 
   const postponeToNextSession = useCallback(async () => {
     if (!breakData) return;
     
-    // This will calculate the next valid time and schedule it
     await scheduleNotification(breakData);
 
     toast({
