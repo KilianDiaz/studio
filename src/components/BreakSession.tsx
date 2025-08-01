@@ -65,10 +65,10 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
   
   // Effect for the main session timer
   useEffect(() => {
-    if (isPaused || sessionTimeLeft === 0) return;
+    if (isPaused || sessionTimeLeft <= 0) return;
 
     const sessionInterval = setInterval(() => {
-      setSessionTimeLeft(prev => Math.max(0, prev - 1));
+      setSessionTimeLeft(prev => prev - 1);
     }, 1000);
 
     return () => clearInterval(sessionInterval);
@@ -76,7 +76,16 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
 
   // Effect for the individual exercise timer and advancement
   useEffect(() => {
-    if (isPaused || exercises.length === 0 || sessionTimeLeft === 0) return;
+    if (isPaused || exercises.length === 0 || sessionTimeLeft <= 0) {
+        if (sessionTimeLeft <= 0 && breakData) {
+            toast({
+                title: "¡Pausa completada!",
+                description: `¡Buen trabajo! Has completado tu pausa de ${breakData.nombre}.`,
+            });
+            setTimeout(() => router.push('/'), 2000);
+        }
+        return;
+    }
 
     const exerciseInterval = setInterval(() => {
       setExerciseTimeLeft(prev => {
@@ -84,35 +93,23 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
           return prev - 1;
         }
         
-        // Time for next exercise
         if (currentExerciseIndex < exercises.length - 1) {
           setCurrentExerciseIndex(i => i + 1);
           return exercises[currentExerciseIndex + 1].duracion;
         }
-
-        // Last exercise finished
+        
+        // Last exercise finished, complete the session.
+        setSessionTimeLeft(0);
         return 0;
       });
     }, 1000);
 
     return () => clearInterval(exerciseInterval);
-  }, [isPaused, exercises, currentExerciseIndex, sessionTimeLeft]);
-
-  // Effect to handle session completion
-  useEffect(() => {
-    if (sessionTimeLeft === 0 && breakData) {
-      toast({
-        title: "¡Pausa completada!",
-        description: `¡Buen trabajo! Has completado tu pausa de ${breakData.nombre}.`,
-      });
-      setTimeout(() => router.push('/'), 2000);
-    }
-  }, [sessionTimeLeft, breakData, router, toast]);
+  }, [isPaused, exercises, currentExerciseIndex, sessionTimeLeft, breakData, router, toast]);
 
   const currentExercise = useMemo(() => exercises[currentExerciseIndex], [exercises, currentExerciseIndex]);
 
   const postpone = (minutes: number) => {
-    // This is a simplified implementation. A real app would need a robust background scheduling system.
     toast({
       title: 'Pausa pospuesta',
       description: `La pausa se ha pospuesto por ${minutes} minutos. Recibirás una notificación (simulado).`,
@@ -193,3 +190,5 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
 };
 
 export default BreakSession;
+
+    
