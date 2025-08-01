@@ -1,21 +1,21 @@
 {
   "name": "Activa Ahora",
-  "short_name": "ActivaAhora",
-  "description": "Tu asistente personal para pausas activas. Crea, gestiona y recibe recordatorios para mantenerte saludable y productivo.",
+  "short_name": "Activa Ahora",
+  "description": "Tu asistente personal para pausas activas.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#F0FFF0",
-  "theme_color": "#90EE90",
+  "theme_color": "#F0FFF0",
   "icons": [
     {
-      "src": "/icons/icon-192x192.png",
-      "sizes": "192x192",
-      "type": "image/png"
+      "src": "/logo192.png",
+      "type": "image/png",
+      "sizes": "192x192"
     },
     {
-      "src": "/icons/icon-512x512.png",
-      "sizes": "512x512",
-      "type": "image/png"
+      "src": "/logo512.png",
+      "type": "image/png",
+      "sizes": "512x512"
     }
   ]
 }
