@@ -36,6 +36,7 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
   const [isPaused, setIsPaused] = useState(false);
   const [sessionTimeLeft, setSessionTimeLeft] = useState(0);
   const [exerciseTimeLeft, setExerciseTimeLeft] = useState(0);
+  const [hasFinished, setHasFinished] = useState(false);
 
   useEffect(() => {
     const foundBreak = breaks.find(b => b.id === breakId);
@@ -47,13 +48,17 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
       let selectedExercises: Ejercicio[] = [];
       let accumulatedTime = 0;
       const shuffled = shuffleArray(exerciseList);
-
-      for (const exercise of shuffled) {
-        if (accumulatedTime + exercise.duracion <= totalDurationSeconds) {
-          selectedExercises.push(exercise);
-          accumulatedTime += exercise.duracion;
-        }
+      
+      let i = 0;
+      while(accumulatedTime < totalDurationSeconds && i < shuffled.length) {
+          const exercise = shuffled[i];
+          if (accumulatedTime + exercise.duracion <= totalDurationSeconds) {
+              selectedExercises.push(exercise);
+              accumulatedTime += exercise.duracion;
+          }
+          i++;
       }
+
       setExercises(selectedExercises);
       if (selectedExercises.length > 0) {
         setExerciseTimeLeft(selectedExercises[0].duracion);
@@ -63,49 +68,42 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
     }
   }, [breakId, breaks, router]);
   
-  // Effect for the main session timer
+  // Effect for timers
   useEffect(() => {
-    if (isPaused || sessionTimeLeft <= 0) return;
+    if (isPaused || hasFinished) return;
 
-    const sessionInterval = setInterval(() => {
-      setSessionTimeLeft(prev => prev - 1);
-    }, 1000);
-
-    return () => clearInterval(sessionInterval);
-  }, [isPaused, sessionTimeLeft]);
-
-  // Effect for the individual exercise timer and advancement
-  useEffect(() => {
-    if (isPaused || exercises.length === 0 || sessionTimeLeft <= 0) {
-        if (sessionTimeLeft <= 0 && breakData) {
-            toast({
-                title: "¡Pausa completada!",
-                description: `¡Buen trabajo! Has completado tu pausa de ${breakData.nombre}.`,
-            });
-            setTimeout(() => router.push('/'), 2000);
-        }
-        return;
+    if (sessionTimeLeft <= 0) {
+      if (!hasFinished && breakData) {
+        setHasFinished(true);
+        toast({
+          title: "¡Pausa completada!",
+          description: `¡Buen trabajo! Has completado tu pausa de ${breakData.nombre}.`,
+        });
+        setTimeout(() => router.push('/'), 3000);
+      }
+      return;
     }
 
-    const exerciseInterval = setInterval(() => {
+    const timer = setInterval(() => {
+      setSessionTimeLeft(prev => prev - 1);
       setExerciseTimeLeft(prev => {
         if (prev > 1) {
           return prev - 1;
         }
-        
+
         if (currentExerciseIndex < exercises.length - 1) {
           setCurrentExerciseIndex(i => i + 1);
           return exercises[currentExerciseIndex + 1].duracion;
         }
         
-        // Last exercise finished, complete the session.
-        setSessionTimeLeft(0);
+        // Last exercise finished, let session timer run out
         return 0;
       });
     }, 1000);
 
-    return () => clearInterval(exerciseInterval);
-  }, [isPaused, exercises, currentExerciseIndex, sessionTimeLeft, breakData, router, toast]);
+    return () => clearInterval(timer);
+  }, [isPaused, sessionTimeLeft, hasFinished, breakData, exercises, currentExerciseIndex, router, toast]);
+
 
   const currentExercise = useMemo(() => exercises[currentExerciseIndex], [exercises, currentExerciseIndex]);
 
@@ -125,7 +123,7 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
     router.push('/');
   };
 
-  if (!breakData || !currentExercise) {
+  if (!breakData) {
     return (
       <Card className="w-full max-w-md text-center p-8">
         <CardTitle>Cargando pausa...</CardTitle>
@@ -133,8 +131,32 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
     );
   }
 
+  if (hasFinished) {
+    return (
+       <Card className="w-full max-w-md mx-auto shadow-2xl">
+         <CardHeader className="text-center">
+            <CardTitle className="text-2xl font-headline">¡Felicidades!</CardTitle>
+         </CardHeader>
+         <CardContent className="flex flex-col items-center text-center space-y-4">
+            <LucideIcons.PartyPopper className="h-20 w-20 text-primary" />
+            <p className="text-lg">Completaste tu pausa activa.</p>
+            <p className="text-muted-foreground">Serás redirigido en unos segundos...</p>
+         </CardContent>
+       </Card>
+    )
+  }
+
+  if (!currentExercise) {
+     return (
+       <Card className="w-full max-w-md text-center p-8">
+         <CardTitle>No hay ejercicios para esta pausa.</CardTitle>
+         <Button onClick={() => router.push('/')} className="mt-4">Volver al inicio</Button>
+       </Card>
+     );
+  }
+
   const sessionProgress = (breakData.duracion * 60 - sessionTimeLeft) / (breakData.duracion * 60) * 100;
-  const exerciseProgress = (currentExercise.duracion - exerciseTimeLeft) / currentExercise.duracion * 100;
+  const exerciseProgress = currentExercise.duracion > 0 ? (currentExercise.duracion - exerciseTimeLeft) / currentExercise.duracion * 100 : 0;
   
   const IconComponent = (LucideIcons as any)[currentExercise.icon] || LucideIcons.Zap;
 
@@ -143,7 +165,7 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
       <CardHeader className="text-center">
         <CardTitle className="text-2xl font-headline">{breakData.nombre}</CardTitle>
         <p className="text-muted-foreground">
-          Ejercicio {currentExerciseIndex + 1} de {exercises.length}
+          {`Ejercicio ${currentExerciseIndex + 1} de ${exercises.length}`}
         </p>
       </CardHeader>
       <CardContent className="flex flex-col items-center text-center space-y-6">
@@ -155,8 +177,8 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
         
         <div>
           <p className="text-sm text-muted-foreground mb-1">Tiempo del ejercicio</p>
-          <Progress value={exerciseProgress} className="w-48 h-2" />
-          <p className="font-mono text-lg mt-1">{exerciseTimeLeft}s</p>
+          <Progress value={exerciseTimeLeft > 0 ? exerciseProgress : 100} className="w-48 h-2" />
+          <p className="font-mono text-lg mt-1">{exerciseTimeLeft > 0 ? `${exerciseTimeLeft}s` : '¡Hecho!'}</p>
         </div>
         
         <div>
@@ -190,5 +212,3 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
 };
 
 export default BreakSession;
-
-    

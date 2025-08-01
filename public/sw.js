@@ -5,29 +5,43 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   console.log('Service Worker activating.');
-  event.waitUntil(clients.claim());
+  event.waitUntil(self.clients.claim());
+});
+
+self.addEventListener('push', (event) => {
+  const data = event.data.json();
+  console.log('Push received.', data);
+  event.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: data.icon,
+      data: data.data,
+    })
+  );
 });
 
 self.addEventListener('notificationclick', (event) => {
   console.log('Notification clicked.');
   event.notification.close();
-
-  const urlToOpen = event.notification.data.url || '/';
+  const urlToOpen = new URL(event.notification.data.url, self.location.origin).href;
 
   event.waitUntil(
     clients.matchAll({
       type: 'window',
-      includeUncontrolled: true
+      includeUncontrolled: true,
     }).then((clientList) => {
-      for (let i = 0; i < clientList.length; i++) {
-        const client = clientList[i];
-        if (client.url === urlToOpen && 'focus' in client) {
-          return client.focus();
+      // Si la ventana de la app ya está abierta, la enfoca
+      if (clientList.length > 0) {
+        let client = clientList[0];
+        for (let i = 0; i < clientList.length; i++) {
+          if (clientList[i].focused) {
+            client = clientList[i];
+          }
         }
+        return client.focus().then(c => c.navigate(urlToOpen));
       }
-      if (clients.openWindow) {
-        return clients.openWindow(urlToOpen);
-      }
+      // Si no, abre una nueva ventana
+      return clients.openWindow(urlToOpen);
     })
   );
 });
