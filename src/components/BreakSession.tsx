@@ -28,7 +28,7 @@ const shuffleArray = <T,>(array: T[]): T[] => {
 const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
   const router = useRouter();
   const { toast } = useToast();
-  const [breaks, setBreaks] = useLocalStorage<Pausa[]>('breaks', []);
+  const [breaks] = useLocalStorage<Pausa[]>('breaks', []);
   const [breakData, setBreakData] = useState<Pausa | null>(null);
 
   const [exercises, setExercises] = useState<Ejercicio[]>([]);
@@ -62,31 +62,43 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
       router.push('/');
     }
   }, [breakId, breaks, router]);
-
+  
+  // Effect for the main session timer
   useEffect(() => {
-    if (isPaused || exercises.length === 0) return;
+    if (isPaused || sessionTimeLeft === 0) return;
 
-    const interval = setInterval(() => {
-      setSessionTimeLeft(prev => (prev > 0 ? prev - 1 : 0));
+    const sessionInterval = setInterval(() => {
+      setSessionTimeLeft(prev => Math.max(0, prev - 1));
+    }, 1000);
+
+    return () => clearInterval(sessionInterval);
+  }, [isPaused, sessionTimeLeft]);
+
+  // Effect for the individual exercise timer and advancement
+  useEffect(() => {
+    if (isPaused || exercises.length === 0 || sessionTimeLeft === 0) return;
+
+    const exerciseInterval = setInterval(() => {
       setExerciseTimeLeft(prev => {
         if (prev > 1) {
           return prev - 1;
         }
         
-        if(currentExerciseIndex < exercises.length - 1) {
-            setCurrentExerciseIndex(i => i + 1);
-            return exercises[currentExerciseIndex + 1].duracion;
+        // Time for next exercise
+        if (currentExerciseIndex < exercises.length - 1) {
+          setCurrentExerciseIndex(i => i + 1);
+          return exercises[currentExerciseIndex + 1].duracion;
         }
 
         // Last exercise finished
-        setSessionTimeLeft(0);
         return 0;
       });
     }, 1000);
 
-    return () => clearInterval(interval);
-  }, [isPaused, currentExerciseIndex, exercises]);
-  
+    return () => clearInterval(exerciseInterval);
+  }, [isPaused, exercises, currentExerciseIndex, sessionTimeLeft]);
+
+  // Effect to handle session completion
   useEffect(() => {
     if (sessionTimeLeft === 0 && breakData) {
       toast({
