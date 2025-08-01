@@ -1,4 +1,5 @@
-self.addEventListener('push', event => {
+// self is the Service Worker scope
+self.addEventListener('push', (event) => {
   const data = event.data.json();
   self.registration.showNotification(data.title, {
     body: data.body,
@@ -6,21 +7,20 @@ self.addEventListener('push', event => {
   });
 });
 
-self.addEventListener('notificationclick', event => {
+self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-
-  const urlToOpen = new URL(event.notification.data.url, self.location.origin).href;
+  const notificationData = event.notification.data || {};
+  const urlToOpen = new URL(notificationData.url || '/', self.location.origin).href;
 
   const promiseChain = clients.matchAll({
     type: 'window',
-    includeUncontrolled: true
+    includeUncontrolled: true,
   }).then((windowClients) => {
     let matchingClient = null;
-
     for (let i = 0; i < windowClients.length; i++) {
-      const windowClient = windowClients[i];
-      if (windowClient.url === urlToOpen) {
-        matchingClient = windowClient;
+      const client = windowClients[i];
+      if (client.url === urlToOpen) {
+        matchingClient = client;
         break;
       }
     }
@@ -33,4 +33,28 @@ self.addEventListener('notificationclick', event => {
   });
 
   event.waitUntil(promiseChain);
+});
+
+// Precaching assets to make the app work offline
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open('activa-ahora-cache').then((cache) => {
+      return cache.addAll([
+        '/',
+        '/manifest.json',
+        '/logo192.svg',
+        '/logo-mono.svg',
+        // Add other important assets here, e.g., CSS, JS files
+        // Be careful not to cache everything, only static assets
+      ]);
+    })
+  );
+});
+
+self.addEventListener('fetch', (event) => {
+  event.respondWith(
+    caches.match(event.request).then((response) => {
+      return response || fetch(event.request);
+    })
+  );
 });
