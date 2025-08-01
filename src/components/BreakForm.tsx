@@ -35,9 +35,9 @@ const BreakForm: React.FC<BreakFormProps> = ({ breakId, onFinished }) => {
   const [breaks, setBreaks] = useLocalStorage<Pausa[]>('breaks', []);
   const { toast } = useToast();
 
-  const getInitialValues = () => {
-    if (breakId) {
-      const existingBreak = breaks.find(b => b.id === breakId);
+  const getInitialValues = (id: string | null) => {
+    if (id) {
+      const existingBreak = breaks.find(b => b.id === id);
       if (existingBreak) {
         return {
           nombre: existingBreak.nombre,
@@ -59,12 +59,13 @@ const BreakForm: React.FC<BreakFormProps> = ({ breakId, onFinished }) => {
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
-    defaultValues: getInitialValues(),
+    defaultValues: getInitialValues(breakId),
   });
 
   useEffect(() => {
-    form.reset(getInitialValues());
-  }, [breakId, breaks, form]);
+    form.reset(getInitialValues(breakId));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [breakId, form.reset]);
 
 
   const onSubmit = (values: z.infer<typeof formSchema>) => {
@@ -213,25 +214,5 @@ const BreakForm: React.FC<BreakFormProps> = ({ breakId, onFinished }) => {
     </Form>
   );
 };
-
-// Workaround for uuid not being available in some environments
-if (typeof window !== 'undefined' && !window.crypto) {
-    (window.crypto as any) = {
-        getRandomValues: (arr: any) => {
-            for (let i = 0; i < arr.length; i++) {
-                arr[i] = Math.floor(Math.random() * 256);
-            }
-        }
-    };
-}
-const crypto = typeof window !== 'undefined' ? window.crypto : null;
-
-function v4() {
-    if (!crypto) return Math.random().toString(36).substring(2, 15);
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-        var r = crypto.getRandomValues(new Uint8Array(1))[0]%16|0, v = c == 'x' ? r : (r&0x3|0x8);
-        return v.toString(16);
-    });
-}
 
 export default BreakForm;
