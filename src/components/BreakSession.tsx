@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import useLocalStorage from '@/hooks/useLocalStorage';
 import type { Pausa, Ejercicio } from '@/lib/types';
@@ -37,6 +37,7 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
   const [sessionTimeLeft, setSessionTimeLeft] = useState(0);
   const [exerciseTimeLeft, setExerciseTimeLeft] = useState(0);
   const [hasFinished, setHasFinished] = useState(false);
+  const [isReady, setIsReady] = useState(false); // New state to control timer start
 
   useEffect(() => {
     const foundBreak = breaks.find(b => b.id === breakId);
@@ -63,21 +64,24 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
       if (selectedExercises.length > 0) {
         setExerciseTimeLeft(selectedExercises[0].duracion);
       }
+      setIsReady(true); // Mark as ready to start timers
     } else {
-      router.push('/');
+       // If break not found after a short delay, redirect.
+       setTimeout(() => router.push('/'), 1000);
     }
   }, [breakId, breaks, router]);
   
   // Effect for timers
   useEffect(() => {
-    if (isPaused || hasFinished) return;
+    // Only run if the session is ready, not paused, and not finished
+    if (!isReady || isPaused || hasFinished) return;
 
     if (sessionTimeLeft <= 0) {
-      if (!hasFinished && breakData) {
+      if (!hasFinished) {
         setHasFinished(true);
         toast({
           title: "¡Pausa completada!",
-          description: `¡Buen trabajo! Has completado tu pausa de ${breakData.nombre}.`,
+          description: `¡Buen trabajo! Has completado tu pausa de ${breakData?.nombre}.`,
         });
         setTimeout(() => router.push('/'), 3000);
       }
@@ -91,18 +95,19 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
           return prev - 1;
         }
 
+        // Move to next exercise if there is one
         if (currentExerciseIndex < exercises.length - 1) {
           setCurrentExerciseIndex(i => i + 1);
           return exercises[currentExerciseIndex + 1].duracion;
         }
         
-        // Last exercise finished, let session timer run out
+        // This was the last exercise, let the session timer run out
         return 0;
       });
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isPaused, sessionTimeLeft, hasFinished, breakData, exercises, currentExerciseIndex, router, toast]);
+  }, [isReady, isPaused, sessionTimeLeft, hasFinished, breakData, exercises, currentExerciseIndex, router, toast]);
 
 
   const currentExercise = useMemo(() => exercises[currentExerciseIndex], [exercises, currentExerciseIndex]);
@@ -123,7 +128,7 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
     router.push('/');
   };
 
-  if (!breakData) {
+  if (!isReady || !breakData) {
     return (
       <Card className="w-full max-w-md text-center p-8">
         <CardTitle>Cargando pausa...</CardTitle>
