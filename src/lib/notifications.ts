@@ -70,9 +70,9 @@ export async function scheduleNotification(breakItem: Pausa) {
     return;
   }
   
-  const registration = await navigator.serviceWorker.getRegistration();
+  const registration = await navigator.serviceWorker.ready;
   if (!registration) {
-    console.log('Service Worker not found.');
+    console.log('Service Worker not ready.');
     return;
   }
 
@@ -93,7 +93,7 @@ export async function scheduleNotification(breakItem: Pausa) {
         await registration.showNotification('¡Hora de tu pausa activa!', {
             tag: breakItem.id,
             body: breakItem.recordatorio || `Es momento de '${breakItem.nombre}'.`,
-            icon: '/logo192.png',
+            icon: '/logo192.svg',
             timestamp: notificationTime,
             showTrigger: new (window as any).TimestampTrigger(notificationTime),
             data: {
@@ -108,7 +108,7 @@ export async function scheduleNotification(breakItem: Pausa) {
             registration.showNotification('¡Hora de tu pausa activa!', {
                 tag: breakItem.id,
                 body: breakItem.recordatorio || `Es momento de '${breakItem.nombre}'.`,
-                icon: '/logo192.png',
+                icon: '/logo192.svg',
                 data: {
                   url: `/break/${breakItem.id}`,
                 },
@@ -120,7 +120,7 @@ export async function scheduleNotification(breakItem: Pausa) {
 
 export async function cancelNotification(breakId: string) {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
-  const registration = await navigator.serviceWorker.getRegistration();
+  const registration = await navigator.serviceWorker.ready;
   if (!registration) return;
 
   const notifications = await registration.getNotifications({ tag: breakId });
@@ -131,7 +131,7 @@ export async function cancelNotification(breakId: string) {
 export async function syncAllNotifications(breaks: Pausa[]) {
     if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('Notification' in window) || Notification.permission !== 'granted') return;
     
-    const registration = await navigator.serviceWorker.getRegistration();
+    const registration = await navigator.serviceWorker.ready;
     if (!registration) return;
 
     const currentNotifications = await registration.getNotifications();
