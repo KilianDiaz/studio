@@ -20,6 +20,7 @@ function getNextNotificationTime(breakItem: Pausa): number | null {
 
   let notificationTime: Date | null = null;
 
+  // Check from today for the next 7 days
   for (let i = 0; i < 7; i++) {
     const date = new Date();
     date.setDate(now.getDate() + i);
@@ -36,10 +37,12 @@ function getNextNotificationTime(breakItem: Pausa): number | null {
     }
   }
 
+  // If no time was found in the next 7 days, it must be next week
   if (!notificationTime) {
       const currentDay = now.getDay();
       let nextDay = -1;
       
+      // Find the first scheduled day after today
       for (const day of sortedDays) {
           if (day > currentDay) {
               nextDay = day;
@@ -47,6 +50,7 @@ function getNextNotificationTime(breakItem: Pausa): number | null {
           }
       }
       
+      // If no day is found later this week, take the first scheduled day of next week
       if (nextDay === -1) {
           nextDay = sortedDays[0];
       }
@@ -60,92 +64,59 @@ function getNextNotificationTime(breakItem: Pausa): number | null {
       notificationTime = finalDate;
   }
 
+
   return notificationTime.getTime();
 }
+
 
 function postMessageToSW(message: any) {
   if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
     navigator.serviceWorker.controller.postMessage(message);
-  } else {
+  } else if ('serviceWorker' in navigator) {
     navigator.serviceWorker.ready.then(registration => {
       registration.active?.postMessage(message);
     });
   }
 }
 
-function showNotificationViaSW(title: string, options: NotificationOptions) {
-    postMessageToSW({
-        type: 'SHOW_NOTIFICATION',
-        payload: { title, options }
-    });
-}
-
-
-export async function schedulePostponedNotification(breakItem: Pausa, postponeMinutes: number) {
-    const notificationTime = Date.now() + postponeMinutes * 60 * 1000;
-    const delay = notificationTime - Date.now();
-    
-    setTimeout(() => {
-        showNotificationViaSW('¡Pausa pospuesta!', {
-            tag: `postponed-${breakItem.id}-${Date.now()}`,
-            body: `Tu pausa '${breakItem.nombre}' comenzará pronto.`,
-            data: { url: `/break/${breakItem.id}` },
-            actions: [{ action: 'view', title: 'Ver Pausa' }]
-        });
-    }, Math.max(0, delay));
-    
-    await scheduleNotification(breakItem);
-}
-
-
 export async function scheduleNotification(breakItem: Pausa) {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator) || Notification.permission !== 'granted') {
     return;
   }
   
+  // First, cancel any existing notification for this break to avoid duplicates
   await cancelNotification(breakItem.id);
 
   const notificationTime = getNextNotificationTime(breakItem);
   
   if (notificationTime) {
-    const delay = notificationTime - Date.now();
-    if (delay < 0) return;
-
-    setTimeout(() => {
-        showNotificationViaSW('¡Hora de tu pausa activa!', {
-            tag: breakItem.id,
-            body: breakItem.recordatorio || `Es momento de '${breakItem.nombre}'.`,
-            timestamp: notificationTime,
-            data: { url: `/break/${breakItem.id}` },
-            actions: [
-                { action: 'view', title: 'Ver Pausa' },
-                { action: 'postpone', title: 'Posponer' }
-            ]
-        });
-    }, delay);
+    postMessageToSW({
+      type: 'SCHEDULE_NOTIFICATION',
+      payload: {
+        breakItem: breakItem,
+        notificationTime: notificationTime,
+      }
+    });
   }
 }
 
 export async function cancelNotification(breakId: string) {
-    if (typeof window === 'undefined' || !('serviceWorker' in navigator) || Notification.permission !== 'granted') return;
-    const registration = await navigator.serviceWorker.ready;
-    const notifications = await registration.getNotifications({ tag: breakId });
-    notifications.forEach(notification => notification.close());
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+    postMessageToSW({ type: 'CANCEL_NOTIFICATION', payload: { breakId } });
 }
 
 export async function syncAllNotifications(breaks: Pausa[]) {
     if (typeof window === 'undefined' || !('serviceWorker' in navigator) || Notification.permission !== 'granted') return;
     
-    const registration = await navigator.serviceWorker.ready;
-    const currentNotifications = await registration.getNotifications();
+    // Cancel all existing notifications first
+    postMessageToSW({ type: 'CANCEL_ALL_NOTIFICATIONS' });
     
-    for(const notification of currentNotifications) {
-        notification.close();
-    }
-
+    // Schedule new ones
     for (const breakItem of breaks) {
         if(breakItem.activa) {
             await scheduleNotification(breakItem);
         }
     }
 }
+
+    

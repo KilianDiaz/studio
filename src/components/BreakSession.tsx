@@ -11,7 +11,7 @@ import { Progress } from '@/components/ui/progress';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import * as LucideIcons from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { scheduleNotification, schedulePostponedNotification } from '@/lib/notifications';
+import { scheduleNotification } from '@/lib/notifications';
 
 interface BreakSessionProps {
   breakId: string;
@@ -123,7 +123,17 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
   const postpone = useCallback(async (minutes: number) => {
     if (!breakData) return;
     
-    await schedulePostponedNotification(breakData, minutes);
+    // Schedule a one-time notification
+    const notificationTime = Date.now() + minutes * 60 * 1000;
+    postMessageToSW({
+      type: 'SCHEDULE_POSTPONED_NOTIFICATION',
+      payload: {
+        breakItem: breakData,
+        notificationTime: notificationTime,
+      }
+    });
+
+    // Re-schedule the original break for its next regular time slot
     await scheduleNotification(breakData); 
 
     toast({
@@ -144,6 +154,16 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
     });
     router.push('/');
   }, [breakData, router, toast]);
+
+  const postMessageToSW = (message: any) => {
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage(message);
+    } else {
+        navigator.serviceWorker.ready.then(registration => {
+            registration.active?.postMessage(message);
+        });
+    }
+  };
 
 
   if (!breakData || !isReady) {
@@ -236,3 +256,5 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
 };
 
 export default BreakSession;
+
+    
