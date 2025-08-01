@@ -8,7 +8,7 @@ import { ejercicios as exerciseList } from '@/lib/data';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import * as LucideIcons from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { scheduleNotification } from '@/lib/notifications';
@@ -143,6 +143,20 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
     router.push('/');
   }, [breakData, breaks, setBreaks, breakId, router, toast]);
 
+  const postponeToNextSession = useCallback(async () => {
+    if (!breakData) return;
+    
+    // This will calculate the next valid time and schedule it
+    await scheduleNotification(breakData);
+
+    toast({
+      title: 'Pausa pospuesta',
+      description: 'La pausa se ha pospuesto a la siguiente sesión programada.',
+    });
+    router.push('/');
+  }, [breakData, router, toast]);
+
+
   if (!breakData || !isReady) {
     return (
       <Card className="w-full max-w-md text-center p-8">
@@ -223,6 +237,8 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
             <DropdownMenuItem onClick={() => postpone(10)}>10 minutos</DropdownMenuItem>
             <DropdownMenuItem onClick={() => postpone(30)}>30 minutos</DropdownMenuItem>
             <DropdownMenuItem onClick={() => postpone(60)}>1 hora</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={postponeToNextSession}>A la próxima sesión</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </CardFooter>

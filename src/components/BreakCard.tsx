@@ -6,21 +6,27 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Clock, Calendar, Edit, Trash2, Bell, BellOff } from 'lucide-react';
+import { Clock, Calendar, Edit, Trash2, Bell, BellOff, Play } from 'lucide-react';
 import { Badge } from './ui/badge';
+import Link from 'next/link';
 
 interface BreakCardProps {
   breakData: Pausa;
   onDelete: () => void;
   onEdit: () => void;
   onToggle: (activa: boolean) => void;
+  onManualStart: () => void;
 }
 
-const BreakCard: React.FC<BreakCardProps> = ({ breakData, onDelete, onEdit, onToggle }) => {
+const BreakCard: React.FC<BreakCardProps> = ({ breakData, onDelete, onEdit, onToggle, onManualStart }) => {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
   const handleToggle = (checked: boolean) => {
     onToggle(checked);
+  };
+  
+  const handleManualStart = () => {
+    onManualStart();
   };
 
   return (
@@ -57,33 +63,41 @@ const BreakCard: React.FC<BreakCardProps> = ({ breakData, onDelete, onEdit, onTo
           )}
         </div>
       </CardContent>
-      <CardFooter className="flex justify-end gap-2 pt-4">
-        <Button variant="ghost" size="icon" onClick={onEdit}>
-          <Edit className="h-5 w-5" />
-          <span className="sr-only">Editar</span>
-        </Button>
-        <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-          <AlertDialogTrigger asChild>
-            <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive hover:bg-destructive/10">
-              <Trash2 className="h-5 w-5" />
-              <span className="sr-only">Eliminar</span>
+      <CardFooter className="flex justify-between items-center pt-4">
+         <Link href={`/break/${breakData.id}`} passHref>
+             <Button variant="outline" onClick={handleManualStart}>
+                 <Play className="h-4 w-4 mr-2" />
+                 Iniciar ahora
+             </Button>
+         </Link>
+        <div className="flex gap-2">
+            <Button variant="ghost" size="icon" onClick={onEdit}>
+              <Edit className="h-5 w-5" />
+              <span className="sr-only">Editar</span>
             </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
-              <AlertDialogDescription>
-                Esta acción no se puede deshacer. Esto eliminará permanentemente tu pausa activa.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancelar</AlertDialogCancel>
-              <AlertDialogAction onClick={onDelete} className="bg-destructive hover:bg-destructive/90">
-                Eliminar
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+            <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+              <AlertDialogTrigger asChild>
+                <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive hover:bg-destructive/10">
+                  <Trash2 className="h-5 w-5" />
+                  <span className="sr-only">Eliminar</span>
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Esta acción no se puede deshacer. Esto eliminará permanentemente tu pausa activa.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction onClick={onDelete} className="bg-destructive hover:bg-destructive/90">
+                    Eliminar
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+        </div>
       </CardFooter>
     </Card>
   );

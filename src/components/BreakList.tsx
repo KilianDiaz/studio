@@ -6,6 +6,7 @@ import type { Pausa } from '@/lib/types';
 import BreakCard from './BreakCard';
 import { AnimatePresence, motion } from 'framer-motion';
 import { scheduleNotification, cancelNotification, syncAllNotifications } from '@/lib/notifications';
+import { useToast } from '@/hooks/use-toast';
 
 interface BreakListProps {
   onEdit: (id: string) => void;
@@ -14,6 +15,7 @@ interface BreakListProps {
 const BreakList: React.FC<BreakListProps> = ({ onEdit }) => {
   const [breaks, setBreaks] = useLocalStorage<Pausa[]>('breaks', []);
   const [hasMounted, setHasMounted] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     setHasMounted(true);
@@ -43,6 +45,18 @@ const BreakList: React.FC<BreakListProps> = ({ onEdit }) => {
         await cancelNotification(targetBreak.id);
       }
     }
+  };
+
+  const handleManualStart = async (id: string) => {
+      const targetBreak = breaks.find(b => b.id === id);
+      if (targetBreak) {
+          // Reschedule notification for the next available slot, effectively "skipping" today
+          await scheduleNotification(targetBreak);
+          toast({
+              title: "Pausa iniciada",
+              description: `Has iniciado '${targetBreak.nombre}'. La próxima notificación está programada.`,
+          });
+      }
   };
 
   if (!hasMounted) {
@@ -80,6 +94,7 @@ const BreakList: React.FC<BreakListProps> = ({ onEdit }) => {
               onDelete={() => handleDelete(b.id)} 
               onEdit={() => onEdit(b.id)}
               onToggle={(activa) => toggleBreak(b.id, activa)}
+              onManualStart={() => handleManualStart(b.id)}
             />
           </motion.div>
         ))}
