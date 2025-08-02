@@ -1,40 +1,58 @@
-/// <reference lib="webworker" />
 
-// Simple function to find and focus an existing window/client
-async function findAndFocusClient(url) {
-  const clients = await self.clients.matchAll({
-    type: 'window',
-    includeUncontrolled: true,
-  });
+self.addEventListener('install', (event) => {
+  console.log('Service Worker installing.');
+});
 
-  const urlToOpen = new URL(url, self.location.origin).href;
-
-  for (const client of clients) {
-    // Check if the client's URL matches, ignoring query params for a broader match
-    const clientURL = new URL(client.url, self.location.origin).href;
-    if (clientURL.startsWith(urlToOpen.split('?')[0])) {
-      return client.focus();
-    }
-  }
-
-  // If no client was found, open a new one
-  return self.clients.openWindow(url);
-}
+self.addEventListener('activate', (event) => {
+  console.log('Service Worker activating.');
+});
 
 
 self.addEventListener('notificationclick', (event) => {
-  const notification = event.notification;
-  const action = event.action;
-  
-  notification.close(); // Always close the notification on interaction
+  event.notification.close();
 
-  const urlToOpen = notification.data?.url || '/';
+  const urlToOpen = event.notification.data?.url || '/';
+  const action = event.action;
 
   if (action === 'skip') {
-    // User chose to skip, so we do nothing further.
     console.log('User skipped the break.');
-  } else {
-    // Default action (clicking the notification body) or 'view' action
-    event.waitUntil(findAndFocusClient(urlToOpen));
+    return;
+  }
+  
+  // This logic handles focusing an existing window or opening a new one
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      // Check if there's a window for this URL open already.
+      for (const client of clientList) {
+        if (client.url === self.location.origin + urlToOpen && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      // If not, open a new one.
+      if (clients.openWindow) {
+        return clients.openWindow(urlToOpen);
+      }
+    })
+  );
+});
+
+self.addEventListener('push', (event) => {
+  if (!event.data) {
+    console.log("Push event has no data.");
+    return;
+  }
+
+  try {
+    const data = event.data.json();
+    const { title, options } = data;
+    
+    event.waitUntil(
+      self.registration.showNotification(title, {
+        ...options,
+        silent: false, // Ensure sound is played on desktop
+      })
+    );
+  } catch(e) {
+    console.error("Error processing push event data: ", e);
   }
 });
