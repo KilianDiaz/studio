@@ -46,17 +46,22 @@ const NotificationManager = () => {
   }, []);
 
   useEffect(() => {
-    if (hasMounted && 'Notification' in window) {
+    if (hasMounted && 'Notification' in window && 'serviceWorker' in navigator) {
       if (Notification.permission === 'default') {
-        // We only ask for permission if it hasn't been granted or denied
         const timer = setTimeout(() => {
             requestNotificationPermission(toast).then(granted => {
               if (granted) {
-                syncAllNotifications(breaks);
+                navigator.serviceWorker.ready.then(() => {
+                    syncAllNotifications(breaks);
+                });
               }
             });
-        }, 3000); // Ask for permission after 3 seconds
+        }, 3000); 
         return () => clearTimeout(timer);
+      } else if (Notification.permission === 'granted') {
+          navigator.serviceWorker.ready.then(() => {
+              syncAllNotifications(breaks);
+          });
       }
     }
   }, [hasMounted, toast, breaks]);

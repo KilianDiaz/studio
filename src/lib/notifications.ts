@@ -84,9 +84,7 @@ export async function syncAllNotifications(breaks: Pausa[]) {
   }
 }
 
-export async function handleManualStart(breakId: string) {
-    // This function can be used to manually trigger a break if needed,
-    // but the main logic is now handled by re-syncing.
-    console.log(`Manual start requested for ${breakId}. Re-syncing notifications.`);
-    // A full sync will correctly schedule the next notification after this manual one.
+export async function handleManualStart(breakId: string, allBreaks: Pausa[]) {
+    console.log(`Manual start for ${breakId}. Re-syncing all notifications.`);
+    await syncAllNotifications(allBreaks);
 }

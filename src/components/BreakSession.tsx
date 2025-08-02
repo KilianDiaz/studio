@@ -11,7 +11,7 @@ import { Progress } from '@/components/ui/progress';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import * as LucideIcons from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { scheduleNotification, syncAllNotifications } from '@/lib/notifications';
+import { syncAllNotifications } from '@/lib/notifications';
 
 interface BreakSessionProps {
   breakId: string;
@@ -93,6 +93,7 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
           title: "¡Pausa completada!",
           description: `¡Buen trabajo! Has completado tu pausa de ${breakData?.nombre}.`,
         });
+        syncAllNotifications(breaks);
         setTimeout(() => router.push('/'), 3000);
         return;
     }
@@ -115,12 +116,12 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isReady, isPaused, hasFinished, sessionTimeLeft, breakData, exercises, currentExerciseIndex, router, toast]);
+  }, [isReady, isPaused, hasFinished, sessionTimeLeft, breakData, exercises, currentExerciseIndex, router, toast, breaks]);
 
 
   const currentExercise = useMemo(() => exercises[currentExerciseIndex], [exercises, currentExerciseIndex]);
 
-  const postponeToNextSession = useCallback(() => {
+  const skipSession = useCallback(() => {
     if (!breakData) return;
     
     syncAllNotifications(breaks);
@@ -203,7 +204,7 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
           {isPaused ? <LucideIcons.Play className="mr-2 h-4 w-4" /> : <LucideIcons.Pause className="mr-2 h-4 w-4" />}
           {isPaused ? 'Reanudar' : 'Pausar'}
         </Button>
-        <Button variant="outline" onClick={postponeToNextSession}>
+        <Button variant="outline" onClick={skipSession}>
           <LucideIcons.SkipForward className="mr-2 h-4 w-4" /> Saltar Pausa
         </Button>
       </CardFooter>
