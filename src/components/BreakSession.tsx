@@ -11,7 +11,7 @@ import { Progress } from '@/components/ui/progress';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import * as LucideIcons from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { handleManualStart, schedulePostponedNotification, syncAllNotifications } from '@/lib/notifications';
+import { syncAllNotifications } from '@/lib/notifications';
 
 interface BreakSessionProps {
   breakId: string;
@@ -29,7 +29,7 @@ const shuffleArray = <T,>(array: T[]): T[] => {
 const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
   const router = useRouter();
   const { toast } = useToast();
-  const [breaks, setBreaks] = useLocalStorage<Pausa[]>('breaks', []);
+  const [breaks] = useLocalStorage<Pausa[]>('breaks', []);
   const [breakData, setBreakData] = useState<Pausa | null>(null);
 
   const [exercises, setExercises] = useState<Ejercicio[]>([]);
@@ -123,10 +123,16 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
   const postpone = useCallback((minutes: number) => {
     if (!breakData) return;
     
-    // Schedule a one-time notification
-    schedulePostponedNotification(breakData, minutes);
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({
+            type: 'POSTPONE',
+            payload: {
+                breakItem: breakData,
+                minutes: minutes,
+            },
+        });
+    }
 
-    // Re-sync the main schedule to ensure the original break is rescheduled correctly for the next day
     syncAllNotifications(breaks); 
 
     toast({
@@ -141,7 +147,7 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
     
     // Simply re-syncing the schedule will make the service worker
     // find the next available slot, effectively skipping this one.
-    handleManualStart(breaks);
+    syncAllNotifications(breaks);
 
     toast({
       title: 'Pausa pospuesta',
