@@ -13,7 +13,7 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useToast } from '@/hooks/use-toast';
 import { v4 as uuidv4 } from 'uuid';
-import { syncNotificationsWithServiceWorker } from '@/lib/notifications';
+import { syncAllNotifications } from '@/lib/notifications';
 
 const daysOfWeek: Day[] = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 
@@ -100,7 +100,7 @@ const BreakForm: React.FC<BreakFormProps> = ({ breakId, onFinished }) => {
     }
     
     setBreaks(updatedBreaks);
-    syncNotificationsWithServiceWorker(updatedBreaks);
+    syncAllNotifications(updatedBreaks);
     onFinished();
   };
 

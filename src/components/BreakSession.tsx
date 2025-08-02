@@ -11,7 +11,7 @@ import { Progress } from '@/components/ui/progress';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import * as LucideIcons from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { handleManualStart, schedulePostponedNotification } from '@/lib/notifications';
+import { handleManualStart, schedulePostponedNotification, syncAllNotifications } from '@/lib/notifications';
 
 interface BreakSessionProps {
   breakId: string;
@@ -123,11 +123,11 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
   const postpone = useCallback((minutes: number) => {
     if (!breakData) return;
     
-    // Schedule a one-time notification via the service worker
+    // Schedule a one-time notification
     schedulePostponedNotification(breakData, minutes);
 
     // Re-sync the main schedule to ensure the original break is rescheduled correctly for the next day
-    handleManualStart(breaks); 
+    syncAllNotifications(breaks); 
 
     toast({
       title: 'Pausa pospuesta',

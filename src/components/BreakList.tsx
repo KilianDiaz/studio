@@ -5,7 +5,7 @@ import useLocalStorage from '@/hooks/useLocalStorage';
 import type { Pausa } from '@/lib/types';
 import BreakCard from './BreakCard';
 import { AnimatePresence, motion } from 'framer-motion';
-import { syncNotificationsWithServiceWorker, handleManualStart as notifyManualStart } from '@/lib/notifications';
+import { syncAllNotifications, handleManualStart as notifyManualStart } from '@/lib/notifications';
 import { useToast } from '@/hooks/use-toast';
 
 interface BreakListProps {
@@ -23,7 +23,7 @@ const BreakList: React.FC<BreakListProps> = ({ onEdit }) => {
 
   useEffect(() => {
     if (hasMounted && Notification.permission === 'granted') {
-      syncNotificationsWithServiceWorker(breaks);
+      syncAllNotifications(breaks);
     }
   }, [breaks, hasMounted]);
 

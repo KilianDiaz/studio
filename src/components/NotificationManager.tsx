@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import useLocalStorage from '@/hooks/useLocalStorage';
 import type { Pausa } from '@/lib/types';
-import { syncNotificationsWithServiceWorker } from '@/lib/notifications';
+import { syncAllNotifications } from '@/lib/notifications';
 
 const requestNotificationPermission = async (toast: (options: any) => void): Promise<boolean> => {
   if (!('Notification' in window)) {
@@ -52,7 +52,7 @@ const NotificationManager = () => {
         const timer = setTimeout(() => {
             requestNotificationPermission(toast).then(granted => {
               if (granted) {
-                syncNotificationsWithServiceWorker(breaks);
+                syncAllNotifications(breaks);
               }
             });
         }, 3000); // Ask for permission after 3 seconds
