@@ -11,7 +11,7 @@ import { Progress } from '@/components/ui/progress';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import * as LucideIcons from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { scheduleNotification } from '@/lib/notifications';
+import { handleManualStart, schedulePostponedNotification } from '@/lib/notifications';
 
 interface BreakSessionProps {
   breakId: string;
@@ -29,7 +29,7 @@ const shuffleArray = <T,>(array: T[]): T[] => {
 const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
   const router = useRouter();
   const { toast } = useToast();
-  const [breaks] = useLocalStorage<Pausa[]>('breaks', []);
+  const [breaks, setBreaks] = useLocalStorage<Pausa[]>('breaks', []);
   const [breakData, setBreakData] = useState<Pausa | null>(null);
 
   const [exercises, setExercises] = useState<Ejercicio[]>([]);
@@ -120,50 +120,35 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
 
   const currentExercise = useMemo(() => exercises[currentExerciseIndex], [exercises, currentExerciseIndex]);
 
-  const postpone = useCallback(async (minutes: number) => {
+  const postpone = useCallback((minutes: number) => {
     if (!breakData) return;
     
-    // Schedule a one-time notification
-    const notificationTime = Date.now() + minutes * 60 * 1000;
-    postMessageToSW({
-      type: 'SCHEDULE_POSTPONED_NOTIFICATION',
-      payload: {
-        breakItem: breakData,
-        notificationTime: notificationTime,
-      }
-    });
+    // Schedule a one-time notification via the service worker
+    schedulePostponedNotification(breakData, minutes);
 
-    // Re-schedule the original break for its next regular time slot
-    await scheduleNotification(breakData); 
+    // Re-sync the main schedule to ensure the original break is rescheduled correctly for the next day
+    handleManualStart(breaks); 
 
     toast({
       title: 'Pausa pospuesta',
       description: `La pausa se ha pospuesto por ${minutes} minutos.`,
     });
     router.push('/');
-  }, [breakData, router, toast]);
+  }, [breakData, breaks, router, toast]);
 
-  const postponeToNextSession = useCallback(async () => {
+  const postponeToNextSession = useCallback(() => {
     if (!breakData) return;
     
-    await scheduleNotification(breakData);
+    // Simply re-syncing the schedule will make the service worker
+    // find the next available slot, effectively skipping this one.
+    handleManualStart(breaks);
 
     toast({
       title: 'Pausa pospuesta',
       description: 'La pausa se ha pospuesto a la siguiente sesión programada.',
     });
     router.push('/');
-  }, [breakData, router, toast]);
-
-  const postMessageToSW = (message: any) => {
-    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-        navigator.serviceWorker.controller.postMessage(message);
-    } else {
-        navigator.serviceWorker.ready.then(registration => {
-            registration.active?.postMessage(message);
-        });
-    }
-  };
+  }, [breakData, breaks, router, toast]);
 
 
   if (!breakData || !isReady) {
@@ -256,5 +241,3 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
 };
 
 export default BreakSession;
-
-    

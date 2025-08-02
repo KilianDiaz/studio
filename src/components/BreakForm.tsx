@@ -13,7 +13,7 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useToast } from '@/hooks/use-toast';
 import { v4 as uuidv4 } from 'uuid';
-import { scheduleNotification } from '@/lib/notifications';
+import { syncNotificationsWithServiceWorker } from '@/lib/notifications';
 
 const daysOfWeek: Day[] = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 
@@ -68,30 +68,39 @@ const BreakForm: React.FC<BreakFormProps> = ({ breakId, onFinished }) => {
   }, [breakId, breaks, form]);
 
 
-  const onSubmit = async (values: z.infer<typeof formSchema>) => {
+  const onSubmit = (values: z.infer<typeof formSchema>) => {
     const isEditing = !!breakId;
-    const newBreak: Pausa = {
-      id: breakId || uuidv4(),
-      nombre: values.nombre,
-      dias: values.dias as Day[],
-      hora: values.hora,
-      duracion: parseInt(values.duracion, 10) as 5 | 10 | 15,
-      recordatorio: values.recordatorio,
-      activa: true,
-    };
-    
+    let updatedBreaks;
+
     if (isEditing) {
        const existingBreak = breaks.find(b => b.id === breakId);
-      setBreaks(breaks.map(b => (b.id === breakId ? { ...newBreak, activa: existingBreak?.activa ?? true } : b)));
+       const newBreakData = {
+         id: breakId,
+         nombre: values.nombre,
+         dias: values.dias as Day[],
+         hora: values.hora,
+         duracion: parseInt(values.duracion, 10) as 5 | 10 | 15,
+         recordatorio: values.recordatorio,
+         activa: existingBreak?.activa ?? true,
+       };
+      updatedBreaks = breaks.map(b => (b.id === breakId ? newBreakData : b));
       toast({ title: "Pausa actualizada", description: "Tu pausa activa ha sido guardada." });
     } else {
-      setBreaks([...breaks, newBreak]);
+      const newBreak: Pausa = {
+        id: uuidv4(),
+        nombre: values.nombre,
+        dias: values.dias as Day[],
+        hora: values.hora,
+        duracion: parseInt(values.duracion, 10) as 5 | 10 | 15,
+        recordatorio: values.recordatorio,
+        activa: true,
+      };
+      updatedBreaks = [...breaks, newBreak];
       toast({ title: "Pausa creada", description: "Tu nueva pausa activa está lista." });
     }
     
-    if (newBreak.activa) {
-        await scheduleNotification(newBreak);
-    }
+    setBreaks(updatedBreaks);
+    syncNotificationsWithServiceWorker(updatedBreaks);
     onFinished();
   };
 

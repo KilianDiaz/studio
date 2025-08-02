@@ -5,7 +5,7 @@ import useLocalStorage from '@/hooks/useLocalStorage';
 import type { Pausa } from '@/lib/types';
 import BreakCard from './BreakCard';
 import { AnimatePresence, motion } from 'framer-motion';
-import { scheduleNotification, cancelNotification, syncAllNotifications } from '@/lib/notifications';
+import { syncNotificationsWithServiceWorker, handleManualStart as notifyManualStart } from '@/lib/notifications';
 import { useToast } from '@/hooks/use-toast';
 
 interface BreakListProps {
@@ -22,36 +22,28 @@ const BreakList: React.FC<BreakListProps> = ({ onEdit }) => {
   }, []);
 
   useEffect(() => {
-    if(hasMounted && Notification.permission === 'granted') {
-      syncAllNotifications(breaks);
+    if (hasMounted && Notification.permission === 'granted') {
+      syncNotificationsWithServiceWorker(breaks);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [breaks, hasMounted]);
 
-  const handleDelete = async (id: string) => {
-    await cancelNotification(id);
-    setBreaks(breaks.filter(b => b.id !== id));
+  const handleDelete = (id: string) => {
+    const updatedBreaks = breaks.filter(b => b.id !== id);
+    setBreaks(updatedBreaks);
   };
   
-  const toggleBreak = async (id: string, activa: boolean) => {
+  const toggleBreak = (id: string, activa: boolean) => {
     const updatedBreaks = breaks.map(b => b.id === id ? { ...b, activa } : b);
     setBreaks(updatedBreaks);
-
-    const targetBreak = updatedBreaks.find(b => b.id === id);
-    if (targetBreak) {
-      if (activa) {
-        await scheduleNotification(targetBreak);
-      } else {
-        await cancelNotification(targetBreak.id);
-      }
-    }
   };
 
-  const handleManualStart = async (id: string) => {
+  const handleManualStart = (id: string) => {
       const targetBreak = breaks.find(b => b.id === id);
       if (targetBreak) {
-          // Reschedule notification for the next available slot, effectively "skipping" today
-          await scheduleNotification(targetBreak);
+          // This tells the service worker to recalculate the schedule,
+          // effectively skipping today's notification for this break
+          // as it's being done manually.
+          notifyManualStart(breaks);
           toast({
               title: "Pausa iniciada",
               description: `Has iniciado '${targetBreak.nombre}'. La próxima notificación está programada.`,
