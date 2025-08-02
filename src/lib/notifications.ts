@@ -20,7 +20,6 @@ function getNextNotificationTime(breakItem: Pausa): number | null {
 
   let notificationTime: Date | null = null;
 
-  // Check from today for the next 7 days
   for (let i = 0; i < 7; i++) {
     const date = new Date();
     date.setDate(now.getDate() + i);
@@ -37,12 +36,10 @@ function getNextNotificationTime(breakItem: Pausa): number | null {
     }
   }
 
-  // If no time was found in the next 7 days, it must be next week
   if (!notificationTime) {
       const currentDay = now.getDay();
       let nextDay = -1;
       
-      // Find the first scheduled day after today
       for (const day of sortedDays) {
           if (day > currentDay) {
               nextDay = day;
@@ -50,7 +47,6 @@ function getNextNotificationTime(breakItem: Pausa): number | null {
           }
       }
       
-      // If no day is found later this week, take the first scheduled day of next week
       if (nextDay === -1) {
           nextDay = sortedDays[0];
       }
@@ -64,113 +60,93 @@ function getNextNotificationTime(breakItem: Pausa): number | null {
       notificationTime = finalDate;
   }
 
-
   return notificationTime.getTime();
 }
 
-
-async function showNotification(breakItem: Pausa, timestamp: number) {
-    const registration = await navigator.serviceWorker.ready;
-    if (!registration || !registration.showNotification) return;
-
-    console.log(`Showing notification for '${breakItem.nombre}' at ${new Date(timestamp).toLocaleString()}.`);
-    
-    await registration.showNotification('¡Hora de tu pausa activa!', {
-        tag: breakItem.id,
-        body: breakItem.recordatorio || `Es momento de '${breakItem.nombre}'.`,
-        icon: '/logo192.svg',
-        badge: '/logo-mono.svg',
-        silent: false,
-        requireInteraction: true,
-        data: {
-          url: `/break/${breakItem.id}`,
-        },
-        actions: [
-            { action: 'view', title: 'Ver Pausa' },
-            { action: 'skip', title: 'Saltar Pausa' }
-        ]
-    });
+async function sendMessageToServiceWorker(message: any) {
+  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage(message);
+  } else {
+    // Wait for the service worker to be ready.
+    await navigator.serviceWorker.ready;
+    if (navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage(message);
+    }
+  }
 }
 
+async function scheduleViaServiceWorker(delay: number, title: string, options: NotificationOptions) {
+  await sendMessageToServiceWorker({
+    type: 'SCHEDULE_NOTIFICATION',
+    payload: { delay, title, options },
+  });
+}
 
 export async function scheduleNotification(breakItem: Pausa) {
-  if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('Notification' in window) || Notification.permission !== 'granted') {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator) || Notification.permission !== 'granted') {
     return;
   }
   
-  const registration = await navigator.serviceWorker.ready;
-  if (!registration || !registration.showNotification) {
-    return;
-  }
-
-  // Cancel any existing notification for this break to avoid duplicates
   await cancelNotification(breakItem.id);
 
   const notificationTime = getNextNotificationTime(breakItem);
   
   if (notificationTime) {
     const delay = notificationTime - Date.now();
-    
     if(delay < 0) return;
 
-    console.log(`Scheduling notification for '${breakItem.nombre}' at ${new Date(notificationTime).toLocaleString()}.`);
+    console.log(`Scheduling notification for '${breakItem.nombre}' via Service Worker in ${delay / 1000}s.`);
     
-    // Check for `showTrigger` availability (for scheduled notifications)
-    // `window as any` is used because TimestampTrigger is not in standard TS libs yet.
-    if ('showTrigger' in (self.Notification?.prototype || {})) {
-        try {
-          await registration.showNotification('¡Hora de tu pausa activa!', {
-              tag: breakItem.id,
-              body: breakItem.recordatorio || `Es momento de '${breakItem.nombre}'.`,
-              icon: '/logo192.svg',
-              badge: '/logo-mono.svg',
-              silent: false,
-              requireInteraction: true,
-              timestamp: notificationTime,
-              showTrigger: new (window as any).TimestampTrigger(notificationTime),
-              data: {
-                url: `/break/${breakItem.id}`,
-              },
-              actions: [
-                  { action: 'view', title: 'Ver Pausa' },
-                  { action: 'skip', title: 'Saltar Pausa' }
-              ]
-          });
-          console.log("Scheduled notification with Trigger.");
-        } catch(e) {
-            console.error("Error scheduling with Trigger, falling back to setTimeout: ", e);
-            // Fallback if TimestampTrigger fails for some reason
-             setTimeout(() => showNotification(breakItem, notificationTime), delay);
-        }
-    } else {
-        // Fallback for browsers that don't support showTrigger
-        setTimeout(() => showNotification(breakItem, notificationTime), delay);
-    }
+    const title = '¡Hora de tu pausa activa!';
+    const options = {
+        tag: breakItem.id,
+        body: breakItem.recordatorio || `Es momento de '${breakItem.nombre}'.`,
+        data: { url: `/break/${breakItem.id}` },
+        actions: [
+            { action: 'view', title: 'Ver Pausa' },
+            { action: 'skip', title: 'Saltar Pausa' }
+        ]
+    };
+    
+    await scheduleViaServiceWorker(delay, title, options);
   }
 }
 
+export async function schedulePostponedNotification(breakItem: Pausa, minutes: number) {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator) || Notification.permission !== 'granted') {
+    return;
+  }
+  
+  const delay = minutes * 60 * 1000;
+  if (delay < 0) return;
+
+  const title = `Pausa pospuesta: ${breakItem.nombre}`;
+  const options = {
+      tag: breakItem.id + '-postponed', // Use a different tag for postponed
+      body: `Es momento de tu pausa '${breakItem.nombre}'.`,
+      data: { url: `/break/${breakItem.id}` },
+      actions: [
+          { action: 'view', title: 'Ver Pausa' },
+          { action: 'skip', title: 'Saltar Pausa' }
+      ]
+  };
+
+  await scheduleViaServiceWorker(delay, title, options);
+}
+
 export async function cancelNotification(breakId: string) {
-  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
   const registration = await navigator.serviceWorker.ready;
   if (!registration) return;
 
   const notifications = await registration.getNotifications({ tag: breakId });
   notifications.forEach(notification => notification.close());
-  console.log(`Cancelled notification for break ${breakId}`);
-}
-
-export async function schedulePostponedNotification(breakItem: Pausa, minutes: number) {
-  const registration = await navigator.serviceWorker.ready;
-  if (!registration || !registration.showNotification) return;
-
-  const notificationTime = Date.now() + minutes * 60 * 1000;
-  const delay = notificationTime - Date.now();
   
-  if (delay < 0) return;
-  
-  setTimeout(() => showNotification(breakItem, notificationTime), delay);
-}
+  const postponedTag = breakId + '-postponed';
+  const postponedNotifications = await registration.getNotifications({ tag: postponedTag });
+  postponedNotifications.forEach(notification => notification.close());
 
+  console.log(`Cancelled notifications for break ${breakId}`);
+}
 
 export async function syncAllNotifications(breaks: Pausa[]) {
     if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('Notification' in window) || Notification.permission !== 'granted') return;
@@ -179,24 +155,18 @@ export async function syncAllNotifications(breaks: Pausa[]) {
     if (!registration) return;
 
     const currentNotifications = await registration.getNotifications();
-    
-    // Cancel all existing notifications
     for(const notification of currentNotifications) {
         notification.close();
     }
 
-    // Schedule new notifications for all active breaks
     for (const breakItem of breaks) {
         if(breakItem.activa) {
             await scheduleNotification(breakItem);
         }
     }
-    console.log("All notifications have been re-synced.");
+    console.log("All notifications have been re-synced with the Service Worker.");
 }
 
 export function handleManualStart(breaks: Pausa[]) {
-  // When a break is started manually, we just need to re-sync the schedule.
-  // The scheduling logic (`getNextNotificationTime`) will automatically find the *next*
-  // available slot, effectively skipping the one for the current day.
   syncAllNotifications(breaks);
 }
