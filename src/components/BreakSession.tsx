@@ -11,7 +11,7 @@ import { Progress } from '@/components/ui/progress';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import * as LucideIcons from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { syncAllNotifications } from '@/lib/notifications';
+import { scheduleNotification, syncAllNotifications } from '@/lib/notifications';
 
 interface BreakSessionProps {
   breakId: string;
@@ -120,38 +120,14 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
 
   const currentExercise = useMemo(() => exercises[currentExerciseIndex], [exercises, currentExerciseIndex]);
 
-  const postpone = useCallback((minutes: number) => {
-    if (!breakData) return;
-    
-    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-        navigator.serviceWorker.controller.postMessage({
-            type: 'POSTPONE',
-            payload: {
-                breakItem: breakData,
-                minutes: minutes,
-            },
-        });
-    }
-
-    syncAllNotifications(breaks); 
-
-    toast({
-      title: 'Pausa pospuesta',
-      description: `La pausa se ha pospuesto por ${minutes} minutos.`,
-    });
-    router.push('/');
-  }, [breakData, breaks, router, toast]);
-
   const postponeToNextSession = useCallback(() => {
     if (!breakData) return;
     
-    // Simply re-syncing the schedule will make the service worker
-    // find the next available slot, effectively skipping this one.
     syncAllNotifications(breaks);
 
     toast({
-      title: 'Pausa pospuesta',
-      description: 'La pausa se ha pospuesto a la siguiente sesión programada.',
+      title: 'Pausa saltada',
+      description: 'La pausa se ha saltado. La próxima se notificará a su hora programada.',
     });
     router.push('/');
   }, [breakData, breaks, router, toast]);
@@ -227,20 +203,9 @@ const BreakSession: React.FC<BreakSessionProps> = ({ breakId }) => {
           {isPaused ? <LucideIcons.Play className="mr-2 h-4 w-4" /> : <LucideIcons.Pause className="mr-2 h-4 w-4" />}
           {isPaused ? 'Reanudar' : 'Pausar'}
         </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="w-full sm:w-auto">
-              <LucideIcons.Clock className="mr-2 h-4 w-4" /> Posponer
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent>
-            <DropdownMenuItem onClick={() => postpone(10)}>10 minutos</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => postpone(30)}>30 minutos</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => postpone(60)}>1 hora</DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={postponeToNextSession}>A la próxima sesión</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <Button variant="outline" onClick={postponeToNextSession}>
+          <LucideIcons.SkipForward className="mr-2 h-4 w-4" /> Saltar Pausa
+        </Button>
       </CardFooter>
     </Card>
   );

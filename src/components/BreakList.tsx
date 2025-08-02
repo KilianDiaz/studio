@@ -5,7 +5,7 @@ import useLocalStorage from '@/hooks/useLocalStorage';
 import type { Pausa } from '@/lib/types';
 import BreakCard from './BreakCard';
 import { AnimatePresence, motion } from 'framer-motion';
-import { syncAllNotifications, handleManualStart as notifyManualStart } from '@/lib/notifications';
+import { syncAllNotifications } from '@/lib/notifications';
 import { useToast } from '@/hooks/use-toast';
 
 interface BreakListProps {
@@ -21,6 +21,7 @@ const BreakList: React.FC<BreakListProps> = ({ onEdit }) => {
     setHasMounted(true);
   }, []);
 
+  // This effect will re-sync notifications whenever the breaks data changes.
   useEffect(() => {
     if (hasMounted && Notification.permission === 'granted') {
       syncAllNotifications(breaks);
@@ -40,10 +41,7 @@ const BreakList: React.FC<BreakListProps> = ({ onEdit }) => {
   const handleManualStart = (id: string) => {
       const targetBreak = breaks.find(b => b.id === id);
       if (targetBreak) {
-          // This tells the service worker to recalculate the schedule,
-          // effectively skipping today's notification for this break
-          // as it's being done manually.
-          notifyManualStart(breaks);
+          syncAllNotifications(breaks);
           toast({
               title: "Pausa iniciada",
               description: `Has iniciado '${targetBreak.nombre}'. La próxima notificación está programada.`,

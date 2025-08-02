@@ -1,89 +1,54 @@
-/// <reference lib="webworker" />
-
-// Simple cache-first strategy
-const CACHE_NAME = 'activa-ahora-cache-v1';
-const urlsToCache = [
-  '/',
-  '/manifest.json',
-  '/logo192.svg',
-  '/logo512.svg',
-  '/logo-mono.svg'
-];
-
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => {
-        console.log('Opened cache');
-        return cache.addAll(urlsToCache);
-      })
-  );
+  console.log('Service Worker installing.');
+  self.skipWaiting();
 });
 
-self.addEventListener('fetch', (event) => {
-  event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        if (response) {
-          return response;
-        }
-        return fetch(event.request);
-      })
-  );
+self.addEventListener('activate', (event) => {
+  console.log('Service Worker activating.');
+  clients.claim();
 });
-
-
-// --- Notification Logic ---
-
-function showNotification(title, options) {
-  self.registration.showNotification(title, {
-    ...options,
-    badge: '/logo-mono.svg',
-    icon: '/logo192.svg',
-    // --- FORCE SOUND AND INTERACTION ---
-    silent: false,
-    requireInteraction: true,
-  });
-}
 
 self.addEventListener('message', (event) => {
-  const { type, payload } = event.data;
-
-  if (type === 'SCHEDULE_NOTIFICATION') {
-    const { delay, title, options } = payload;
+  if (event.data && event.data.type === 'SHOW_NOTIFICATION') {
+    const { title, options } = event.data.payload;
     
-    setTimeout(() => {
-      showNotification(title, options);
-    }, delay);
+    event.waitUntil(
+      self.registration.showNotification(title, {
+        ...options,
+        silent: false, // Forzar sonido
+        requireInteraction: true, // Notificación persistente en escritorio
+      }).catch(e => console.error("Error showing notification: ", e))
+    );
   }
 });
 
 
 self.addEventListener('notificationclick', (event) => {
   const notification = event.notification;
-  const action = event.action;
-
+  const urlToOpen = notification.data?.url || '/';
+  
+  // Cerrar la notificación
   notification.close();
 
-  const urlToOpen = new URL(notification.data.url, self.location.origin).href;
-
-  const promiseChain = clients.matchAll({
-    type: 'window',
-    includeUncontrolled: true
-  }).then((windowClients) => {
-    // Check if there is already a window open with the target URL
-    for (let i = 0; i < windowClients.length; i++) {
-      const client = windowClients[i];
-      // If so, just focus it.
-      if (client.url === urlToOpen && 'focus' in client) {
-        return client.focus();
+  if (event.action === 'skip') {
+    // No hacer nada, solo cerrar la notificación
+    console.log("Notificación saltada.");
+    return;
+  }
+  
+  // Lógica para enfocar o abrir la ventana
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      // Si la ventana/PWA ya está abierta, la enfoca.
+      for (const client of clientList) {
+        if (client.url === self.location.origin + urlToOpen && 'focus' in client) {
+          return client.focus();
+        }
       }
-    }
-    // If not, then open a new window.
-    if (clients.openWindow) {
-      return clients.openWindow(urlToOpen);
-    }
-  });
-
-  event.waitUntil(promiseChain);
+      // Si no está abierta, abre una nueva ventana.
+      if (clients.openWindow) {
+        return clients.openWindow(urlToOpen);
+      }
+    })
+  );
 });
