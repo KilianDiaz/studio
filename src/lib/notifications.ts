@@ -18,9 +18,7 @@ function getNextNotificationTime(breakItem: Pausa): number | null {
   const sortedDays = breakItem.dias.map(day => dayNameToNumber[day]).sort((a,b) => a - b);
   if(sortedDays.length === 0) return null;
 
-  let notificationTime: Date | null = null;
-
-  for (let i = 0; i < 7; i++) {
+  for (let i = 0; i < 8; i++) { // Check up to 8 days to be safe
     const date = new Date();
     date.setDate(now.getDate() + i);
     const dayOfWeek = date.getDay();
@@ -30,101 +28,65 @@ function getNextNotificationTime(breakItem: Pausa): number | null {
       potentialNotificationTime.setHours(hours, minutes, 0, 0);
 
       if (potentialNotificationTime > now) {
-        notificationTime = potentialNotificationTime;
-        break; 
+        return potentialNotificationTime.getTime();
       }
     }
   }
 
-  if (!notificationTime) {
-      const currentDay = now.getDay();
-      let nextDay = -1;
-      
-      for (const day of sortedDays) {
-          if (day > currentDay) {
-              nextDay = day;
-              break;
-          }
-      }
-      
-      if (nextDay === -1) {
-          nextDay = sortedDays[0];
-      }
-
-      const daysUntilNext = (nextDay - currentDay + 7) % 7;
-      const daysToAdd = daysUntilNext === 0 ? 7 : daysUntilNext;
-
-      const finalDate = new Date();
-      finalDate.setDate(now.getDate() + daysToAdd);
-      finalDate.setHours(hours, minutes, 0, 0);
-      notificationTime = finalDate;
-  }
-
-  return notificationTime.getTime();
+  return null;
 }
 
 async function sendMessageToServiceWorker(message: any) {
-    if (!('serviceWorker' in navigator)) return;
-    const registration = await navigator.serviceWorker.ready;
-    if (registration.active) {
-        registration.active.postMessage(message);
-    }
+  if (!('serviceWorker' in navigator)) {
+    console.warn("Service Worker not supported.");
+    return;
+  };
+  const registration = await navigator.serviceWorker.ready;
+  if (registration.active) {
+      registration.active.postMessage(message);
+  }
 }
 
-async function showNotification(title: string, options: NotificationOptions) {
-  await sendMessageToServiceWorker({
-    type: 'SHOW_NOTIFICATION',
-    payload: { title, options },
-  });
-}
 
-export async function scheduleNotification(breakItem: Pausa) {
+export async function syncAllNotifications(breaks: Pausa[]) {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator) || Notification.permission !== 'granted') {
     return;
   }
   
-  const notificationTime = getNextNotificationTime(breakItem);
-  
-  if (notificationTime) {
-    const delay = notificationTime - Date.now();
-    
-    if(delay < 0) return;
+  const activeBreaks = breaks.filter(b => b.activa);
 
-    console.log(`Scheduling notification for '${breakItem.nombre}' at ${new Date(notificationTime).toLocaleString()}.`);
-    
-    setTimeout(() => {
-        const title = '¡Hora de tu pausa activa!';
-        const options = {
-            tag: breakItem.id,
-            body: breakItem.recordatorio || `Es momento de '${breakItem.nombre}'.`,
-            data: { url: `/break/${breakItem.id}` },
-            actions: [
-                { action: 'view', title: 'Ver Pausa' },
-                { action: 'skip', title: 'Saltar Pausa' }
-            ]
-        };
-        showNotification(title, options);
-    }, delay);
+  // Clear any previously scheduled notifications in the SW
+  await sendMessageToServiceWorker({ type: 'CLEAR_SCHEDULE' });
+
+  // Find the next overall notification to schedule
+  let nextNotification = null;
+
+  for (const breakItem of activeBreaks) {
+    const notificationTime = getNextNotificationTime(breakItem);
+    if (notificationTime) {
+      const notificationDetails = {
+        timestamp: notificationTime,
+        breakData: breakItem
+      };
+      if (!nextNotification || notificationTime < nextNotification.timestamp) {
+        nextNotification = notificationDetails;
+      }
+    }
+  }
+
+  // Schedule only the very next notification
+  if (nextNotification) {
+    console.log(`Scheduling next notification for '${nextNotification.breakData.nombre}' at ${new Date(nextNotification.timestamp).toLocaleString()}.`);
+    await sendMessageToServiceWorker({
+      type: 'SCHEDULE_NOTIFICATION',
+      payload: nextNotification
+    });
   }
 }
 
-export async function cancelAllScheduled() {
-    // This is tricky with client-side setTimeouts.
-    // For this app's logic, re-syncing is enough.
-    // A more robust solution would store timeout IDs.
-}
-
-export async function syncAllNotifications(breaks: Pausa[]) {
-    if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('Notification' in window) || Notification.permission !== 'granted') return;
-    
-    // We can't easily cancel client-side setTimeouts, but this re-scheduling
-    // on every data change is the core logic.
-    // A more complex app would need to manage timeout IDs.
-    
-    for (const breakItem of breaks) {
-        if(breakItem.activa) {
-            await scheduleNotification(breakItem);
-        }
-    }
-    console.log("All active notifications have been scheduled.");
+export async function handleManualStart(breakId: string) {
+    // This function can be used to manually trigger a break if needed,
+    // but the main logic is now handled by re-syncing.
+    console.log(`Manual start requested for ${breakId}. Re-syncing notifications.`);
+    // A full sync will correctly schedule the next notification after this manual one.
 }
