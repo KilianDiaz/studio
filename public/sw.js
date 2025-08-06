@@ -1,157 +1,136 @@
-/// <reference lib="webworker" />
+'use strict';
 
-declare const self: ServiceWorkerGlobalScope;
-
-const CACHE_NAME = 'activa-ahora-cache-v1';
-const URLS_TO_CACHE = [
-  '/',
-  '/manifest.json',
-  '/logo192.svg',
-  '/logo512.svg',
-  '/logo-mono.svg',
-];
-
-// 1. Installation
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => {
-        console.log('Opened cache');
-        return cache.addAll(URLS_TO_CACHE);
-      })
-      .then(() => self.skipWaiting())
-  );
-});
-
-// 2. Activation
-self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) {
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    }).then(() => self.clients.claim())
-  );
-});
-
-// 3. Fetch (serve from cache)
-self.addEventListener('fetch', (event) => {
-  event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        return response || fetch(event.request);
-      })
-  );
-});
-
-
-// Notification Logic
 let notificationTimer = null;
+let scheduledNotifications = [];
 
-const showNotification = (title, options) => {
-  self.registration.showNotification(title, {
-    ...options,
-    badge: '/logo-mono.svg',
-    icon: '/logo192.svg',
-    silent: false,
-    requireInteraction: true,
-  });
-};
+// Helper function to show a notification
+function showNotification(notificationData) {
+    const { breakData, postponed } = notificationData;
+    console.log(`[SW] Showing notification for: ${breakData.nombre}`);
 
-const scheduleNotification = (notificationData) => {
-  const { timestamp, breakData } = notificationData;
-  const now = Date.now();
-  const delay = timestamp - now;
+    const title = postponed ? `Recordatorio: ${breakData.nombre}` : '¡Hora de tu pausa activa!';
+    const body = breakData.recordatorio || `Es momento de tomar tu pausa '${breakData.nombre}'.`;
 
-  if (delay > 0) {
-    if (notificationTimer) {
-      clearTimeout(notificationTimer);
-    }
-    notificationTimer = setTimeout(() => {
-      showNotification('¡Hora de tu pausa activa!', {
+    self.registration.showNotification(title, {
         tag: breakData.id,
-        body: breakData.recordatorio || `Es momento de '${breakData.nombre}'.`,
+        body: body,
+        icon: '/logo192.svg',
+        badge: '/logo-mono.svg',
+        silent: false,
+        requireInteraction: true,
         data: {
-          url: `/break/${breakData.id}`,
-          breakData: breakData
+            url: `/break/${breakData.id}`,
+            breakData: breakData,
         },
         actions: [
-          { action: 'view', title: 'Ver Pausa' },
-          { action: 'postpone-10', title: 'Posponer 10 min' },
-          { action: 'postpone-30', title: 'Posponer 30 min' },
-          { action: 'postpone-60', title: 'Posponer 1 hora' },
-          { action: 'skip', title: 'Saltar Pausa' }
-        ]
-      });
-    }, delay);
-  }
-};
+            { action: 'view', title: 'Ver Pausa' },
+            { action: 'postpone-10', title: 'Posponer 10 min' },
+            { action: 'skip', title: 'Saltar Pausa' },
+        ],
+    });
+}
+
+// Function to schedule the next notification
+function scheduleNextNotification() {
+    // Clear any existing timer
+    if (notificationTimer) {
+        clearTimeout(notificationTimer);
+        notificationTimer = null;
+    }
+
+    if (scheduledNotifications.length === 0) {
+        console.log('[SW] No notifications to schedule.');
+        return;
+    }
+
+    // Sort notifications by timestamp to find the next one
+    scheduledNotifications.sort((a, b) => a.timestamp - b.timestamp);
+    const nextNotification = scheduledNotifications[0];
+
+    const now = Date.now();
+    const delay = nextNotification.timestamp - now;
+
+    if (delay > 0) {
+        console.log(`[SW] Scheduling next notification in ${delay / 1000} seconds.`);
+        notificationTimer = setTimeout(() => {
+            showNotification(nextNotification);
+            // Remove the notification that was just shown and reschedule
+            scheduledNotifications = scheduledNotifications.filter(n => n.breakData.id !== nextNotification.breakData.id);
+            scheduleNextNotification(); // Schedule the next one in the list
+        }, delay);
+    } else {
+        // If the time is in the past, show it immediately (or handle as needed)
+        console.log('[SW] Notification time is in the past, showing immediately.');
+        showNotification(nextNotification);
+        scheduledNotifications = scheduledNotifications.filter(n => n.breakData.id !== nextNotification.breakData.id);
+        scheduleNextNotification();
+    }
+}
+
 
 self.addEventListener('message', (event) => {
-  if (event.data.type === 'SCHEDULE_NOTIFICATION') {
-    scheduleNotification(event.data.payload);
-  } else if (event.data.type === 'CLEAR_SCHEDULE') {
-     if (notificationTimer) {
-      clearTimeout(notificationTimer);
-      notificationTimer = null;
+    if (event.data && event.data.type === 'SCHEDULE_NOTIFICATIONS') {
+        console.log('[SW] Received new schedule from client.', event.data.payload);
+        scheduledNotifications = event.data.payload;
+        scheduleNextNotification();
     }
-  }
 });
 
 
 self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
-  const breakData = event.notification.data.breakData;
-  const urlToOpen = new URL(event.notification.data.url, self.location.origin).href;
+    event.notification.close();
+    const notificationData = event.notification.data;
+    const urlToOpen = new URL(notificationData.url, self.location.origin).href;
 
-  const handleAction = async (action) => {
-      switch (action) {
-          case 'view':
-              // This is the default action if no button is clicked
-              break;
-          case 'postpone-10':
-              scheduleNotification({ timestamp: Date.now() + 10 * 60 * 1000, breakData });
-              return; // Don't open window
-          case 'postpone-30':
-              scheduleNotification({ timestamp: Date.now() + 30 * 60 * 1000, breakData });
-              return; // Don't open window
-          case 'postpone-60':
-              scheduleNotification({ timestamp: Date.now() + 60 * 60 * 1000, breakData });
-              return; // Don't open window
-          case 'skip':
-              // Just close the notification and do nothing else. The main app will schedule the next one.
-              return;
-          default:
-              break;
-      }
-      
-      // This part runs only for 'view' or direct click on notification body
-      event.waitUntil(
-          self.clients.matchAll({
-              type: "window",
-              includeUncontrolled: true,
-          }).then((clientList) => {
-              if (clientList.length > 0) {
-                  let client = clientList[0];
-                  for (let i = 0; i < clientList.length; i++) {
-                      if (clientList[i].focused) {
-                          client = clientList[i];
-                          break;
-                      }
-                  }
-                  if (client) {
-                      client.navigate(urlToOpen);
-                      return client.focus();
-                  }
-              }
-              return self.clients.openWindow(urlToOpen);
-          })
-      );
-  };
+    const handleAction = async () => {
+        if (event.action === 'skip') {
+            console.log('[SW] Skipping break.');
+            // The break is skipped, and the next one will be scheduled automatically.
+            return;
+        }
 
-  handleAction(event.action || 'view');
+        if (event.action.startsWith('postpone-')) {
+            const minutes = parseInt(event.action.split('-')[1], 10);
+            console.log(`[SW] Postponing break for ${minutes} minutes.`);
+            const newTimestamp = Date.now() + minutes * 60 * 1000;
+            const postponedNotification = {
+                timestamp: newTimestamp,
+                breakData: notificationData.breakData,
+                postponed: true,
+            };
+            // Add the postponed notification to the schedule and re-evaluate
+            scheduledNotifications.push(postponedNotification);
+            scheduleNextNotification();
+            return;
+        }
+
+        // Default action (click on notification body) or 'view' action
+        const windowClients = await self.clients.matchAll({
+            type: 'window',
+            includeUncontrolled: true,
+        });
+
+        for (let i = 0; i < windowClients.length; i++) {
+            const client = windowClients[i];
+            if (client.url === urlToOpen && 'focus' in client) {
+                return client.focus();
+            }
+        }
+
+        if (self.clients.openWindow) {
+            return self.clients.openWindow(urlToOpen);
+        }
+    };
+
+    event.waitUntil(handleAction());
+});
+
+self.addEventListener('install', () => {
+    self.skipWaiting();
+    console.log('[SW] Service Worker installed.');
+});
+
+self.addEventListener('activate', () => {
+    console.log('[SW] Service Worker activated.');
+    return self.clients.claim();
 });

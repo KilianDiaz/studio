@@ -37,64 +37,69 @@ function getNextNotificationTime(breakItem: Pausa): number | null {
 }
 
 async function sendMessageToServiceWorker(message: any) {
-  if (!('serviceWorker' in navigator)) {
-    console.warn("Service Worker not supported.");
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
+    console.warn("Service Worker not supported or window not available.");
     return;
   };
-  const registration = await navigator.serviceWorker.ready;
-  if (registration.active) {
-      registration.active.postMessage(message);
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    if (registration.active) {
+        registration.active.postMessage(message);
+    } else {
+        console.warn("Service Worker is not active.");
+    }
+  } catch(error) {
+    console.error("Error sending message to Service Worker:", error);
   }
 }
 
-
 export async function syncAllNotifications(breaks: Pausa[]) {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator) || Notification.permission !== 'granted') {
+    console.log('Cannot sync notifications. Conditions not met.');
     return;
   }
   
   const activeBreaks = breaks.filter(b => b.activa);
-
-  // Clear any previously scheduled notifications in the SW
-  await sendMessageToServiceWorker({ type: 'CLEAR_SCHEDULE' });
-
-  // Find the next overall notification to schedule
-  let nextNotification = null;
-
-  for (const breakItem of activeBreaks) {
+  
+  const notificationsToSchedule = activeBreaks.map(breakItem => {
     const notificationTime = getNextNotificationTime(breakItem);
-    if (notificationTime) {
-      const notificationDetails = {
+    if(notificationTime) {
+      return {
         timestamp: notificationTime,
         breakData: breakItem
       };
-      if (!nextNotification || notificationTime < nextNotification.timestamp) {
-        nextNotification = notificationDetails;
-      }
     }
-  }
+    return null;
+  }).filter(Boolean);
 
-  // Schedule only the very next notification
-  if (nextNotification) {
-    console.log(`Scheduling next notification for '${nextNotification.breakData.nombre}' at ${new Date(nextNotification.timestamp).toLocaleString()}.`);
+
+  if (notificationsToSchedule.length > 0) {
+    console.log(`[Client] Sending ${notificationsToSchedule.length} notifications to SW to schedule.`);
     await sendMessageToServiceWorker({
-      type: 'SCHEDULE_NOTIFICATION',
-      payload: nextNotification
+      type: 'SCHEDULE_NOTIFICATIONS',
+      payload: notificationsToSchedule
     });
+  } else {
+    // If there are no active breaks, clear the schedule in the SW
+    console.log('[Client] No active breaks. Clearing schedule in SW.');
+    await sendMessageToServiceWorker({ type: 'SCHEDULE_NOTIFICATIONS', payload: [] });
   }
 }
 
 export async function handleManualStart(breakId: string, allBreaks: Pausa[]) {
     console.log(`Manual start for ${breakId}. Re-syncing all notifications.`);
+    // When a break is started manually, we re-sync all notifications to recalculate the next scheduled one.
     await syncAllNotifications(allBreaks);
 }
 
 export async function cancelNotification(breakId: string) {
+  // This function might not be necessary if SW handles everything,
+  // but it's good practice to keep it for manual cancellation from UI if needed.
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
   const registration = await navigator.serviceWorker.ready;
   if (!registration) return;
 
   const notifications = await registration.getNotifications({ tag: breakId });
   notifications.forEach(notification => notification.close());
-  console.log(`Cancelled notification for break ${breakId}`);
+  console.log(`[Client] Manually cancelled notification for break ${breakId}`);
 }
