@@ -59,6 +59,9 @@ export async function syncAllNotifications(breaks: Pausa[]) {
     return;
   }
   
+  // First, clear any existing scheduled notification in the SW
+  await sendMessageToServiceWorker({ type: 'CLEAR_SCHEDULE' });
+  
   const activeBreaks = breaks.filter(b => b.activa);
   
   const notificationsToSchedule = activeBreaks.map(breakItem => {
@@ -72,29 +75,25 @@ export async function syncAllNotifications(breaks: Pausa[]) {
     return null;
   }).filter(Boolean);
 
-
   if (notificationsToSchedule.length > 0) {
-    console.log(`[Client] Sending ${notificationsToSchedule.length} notifications to SW to schedule.`);
-    await sendMessageToServiceWorker({
-      type: 'SCHEDULE_NOTIFICATIONS',
-      payload: notificationsToSchedule
-    });
-  } else {
-    // If there are no active breaks, clear the schedule in the SW
-    console.log('[Client] No active breaks. Clearing schedule in SW.');
-    await sendMessageToServiceWorker({ type: 'SCHEDULE_NOTIFICATIONS', payload: [] });
+     // Sort to find the very next notification
+     notificationsToSchedule.sort((a, b) => a.timestamp - b.timestamp);
+     const nextNotification = notificationsToSchedule[0];
+     
+     console.log(`[Client] Sending next notification to SW to schedule.`);
+     await sendMessageToServiceWorker({
+       type: 'SCHEDULE_NOTIFICATION',
+       payload: nextNotification
+     });
   }
 }
 
 export async function handleManualStart(breakId: string, allBreaks: Pausa[]) {
     console.log(`Manual start for ${breakId}. Re-syncing all notifications.`);
-    // When a break is started manually, we re-sync all notifications to recalculate the next scheduled one.
     await syncAllNotifications(allBreaks);
 }
 
 export async function cancelNotification(breakId: string) {
-  // This function might not be necessary if SW handles everything,
-  // but it's good practice to keep it for manual cancellation from UI if needed.
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
   const registration = await navigator.serviceWorker.ready;
   if (!registration) return;
@@ -102,4 +101,6 @@ export async function cancelNotification(breakId: string) {
   const notifications = await registration.getNotifications({ tag: breakId });
   notifications.forEach(notification => notification.close());
   console.log(`[Client] Manually cancelled notification for break ${breakId}`);
+   // Also clear any scheduled timeout in the SW
+  await sendMessageToServiceWorker({ type: 'CLEAR_SCHEDULE' });
 }
