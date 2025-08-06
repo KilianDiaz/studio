@@ -88,3 +88,13 @@ export async function handleManualStart(breakId: string, allBreaks: Pausa[]) {
     console.log(`Manual start for ${breakId}. Re-syncing all notifications.`);
     await syncAllNotifications(allBreaks);
 }
+
+export async function cancelNotification(breakId: string) {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+  const registration = await navigator.serviceWorker.ready;
+  if (!registration) return;
+
+  const notifications = await registration.getNotifications({ tag: breakId });
+  notifications.forEach(notification => notification.close());
+  console.log(`Cancelled notification for break ${breakId}`);
+}
