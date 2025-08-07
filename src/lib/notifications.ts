@@ -73,7 +73,7 @@ export async function syncAllNotifications(breaks: Pausa[]) {
       };
     }
     return null;
-  }).filter(Boolean);
+  }).filter((item): item is { timestamp: number; breakData: Pausa } => item !== null);
 
   if (notificationsToSchedule.length > 0) {
      // Sort to find the very next notification

@@ -43,7 +43,27 @@ const NotificationManager = () => {
 
   useEffect(() => {
     setHasMounted(true);
-  }, []);
+    
+    // Listener for messages from the service worker
+    const handleSWMessage = (event: MessageEvent) => {
+      if (event.data && event.data.type === 'SYNC_NOTIFICATIONS') {
+        console.log('[Client] Received SYNC_NOTIFICATIONS request from SW.');
+        syncAllNotifications(breaks);
+      }
+    };
+    
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', handleSWMessage);
+    }
+    
+    return () => {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.removeEventListener('message', handleSWMessage);
+      }
+    }
+  // We only want to set this up once, but we need `breaks` to be up to date.
+  // The breaks dependency here ensures syncs are called with the latest data.
+  }, [breaks]);
 
   useEffect(() => {
     if (hasMounted && 'Notification' in window && 'serviceWorker' in navigator) {
