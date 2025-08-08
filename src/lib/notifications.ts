@@ -66,6 +66,7 @@ export async function scheduleNotification(breakItem: Pausa) {
       body: breakItem.recordatorio || `Es momento de '${breakItem.nombre}'.`,
       icon: '/logo192.svg',
       badge: '/logo-mono.svg',
+      vibrate: [200, 100, 200], // Key change to force sound/attention
       data: {
         url: `/break/${breakItem.id}`,
       },
